@@ -1,0 +1,34 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: defend-contain-comply
+  title: defend-contain-comply
+  description: "A hands on lab that takes you through a vulnerability response
+    orchestrated and managed by Ansible Automation Platform. "
+  annotations:
+    ph.rhdp.io/content-type: lab
+    ph.rhdp.io/deployment-mode: self_published
+    ph.rhdp.io/github-user: nmartins0611
+    ph.rhdp.io/owner: nmartins@redhat.com
+    backstage.io/techdocs-ref: dir:.
+    github.com/project-slug: rhpds/defend-contain-comply
+    ph.rhdp.io/created-at: 2026-08-20T14:21:16.401Z
+  tags:
+    - publishing-house
+    - lab
+    - self-published
+  links:
+    - url: https://github.com/rhpds/defend-contain-comply
+      title: Repository
+      icon: github
+    - url: https://devspaces.apps.ocpv-infra02.wdc07.infra.demo.redhat.com#https://github.com/rhpds/defend-contain-comply
+      title: Open in DevSpaces
+      icon: catalog
+    - url: https://central-api-publishing-house.apps.ocpv-infra02.wdc07.infra.demo.redhat.com
+      title: Central
+      icon: dashboard
+spec:
+  type: content
+  lifecycle: experimental
+  owner: rhdp-team
+  system: publishing-house
