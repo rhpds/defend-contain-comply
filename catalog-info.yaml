@@ -7,7 +7,7 @@ metadata:
     orchestrated and managed by Ansible Automation Platform. "
   annotations:
     ph.rhdp.io/content-type: lab
-    ph.rhdp.io/deployment-mode: self_published
+    ph.rhdp.io/deployment-mode: rhdp_published
     ph.rhdp.io/github-user: nmartins0611
     ph.rhdp.io/owner: nmartins@redhat.com
     backstage.io/techdocs-ref: dir:.
@@ -16,7 +16,7 @@ metadata:
   tags:
     - publishing-house
     - lab
-    - self-published
+    - rhdp-published
   links:
     - url: https://github.com/rhpds/defend-contain-comply
       title: Repository
