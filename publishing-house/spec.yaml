@@ -9,7 +9,7 @@ project:
   slug: "defend-contain-comply"
   owner_email: "nmartins@redhat.com"
   content_type: "lab"
-  deployment_mode: "self_published"
+  deployment_mode: "rhdp_published"
   initiative_key: "rh1_2027"
   showroom_type: "zero_touch"
   intake_type: "migration"
