@@ -117,7 +117,7 @@ approval_checklist:
   content:
     prerequisites_verifiable: false
     assessment_strategy: "Each module contains 7 exercises with verification steps. Completion confirmed through observable outcomes: Splunk alert correlation, AAP job status, workflow node results, OPA policy outputs, compliance reports, and container scan results."
-    catalog_gap: ""
+    catalog_gap: "Unique combination of EDA+Splunk automated CVE response, OPA policy-as-code enforcement in AAP workflows, and full audit-harden-build-scan compliance pipeline. Existing catalog covers pieces (EDA+Splunk in AI-Driven lab, CIS scanning in Lightspeed lab) but nothing ties all three together end-to-end."
     design_overview: "This lab teaches automated vulnerability response using Red Hat Ansible Automation Platform. Participants progress through three phases — detection and containment with Event-Driven Ansible, policy-gated remediation with OPA and AAP workflows, and auditable compliance with CIS hardening and hardened container builds — covering the full lifecycle from CVE alert to compliance evidence."
     module_summaries:
       - title: "DEFEND: Detect and Contain"
@@ -126,8 +126,18 @@ approval_checklist:
         overview: "Participants create OPA patch policies, build a 5-node AAP workflow with approval gates and policy-as-code execution checks, run end-to-end remediation, and demonstrate policy violation handling."
       - title: "COMPLY: Audit, Harden, Deliver"
         overview: "Participants audit systems against 13 OPA compliance controls, apply CIS hardening, generate HTML compliance reports, build hardened container images from UBI9-minimal with OpenSCAP scanning, and run a full compliance AAP workflow."
-    rcars_overlap_pct: null
-    rcars_top_matches: []
+    rcars_overlap_pct: 84
+    rcars_top_matches:
+      - title: "Introduction to AI-Driven Ansible Automation: Self-healing, Observability-Driven AIOps"
+        ci_name: "published.ai-driven-aap.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=published.ai-driven-aap.prod"
+        relevance_score: 84
+        why_it_fits: "Covers Event-Driven Ansible with Splunk integration, CVE detection and remediation via Lightspeed, and RHEL self-healing workflows — overlapping with automated CVE detection/containment with EDA and Splunk."
+      - title: "Hands on with Red Hat Lightspeed in Satellite"
+        ci_name: "zt-rhelbu.zt-lightspeed-satellite.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=zt-rhelbu.zt-lightspeed-satellite.prod"
+        relevance_score: 53
+        why_it_fits: "Covers CVE identification, remediation playbook generation, and CIS Level 1 compliance scanning with OpenSCAP on RHEL, partially overlapping with CVE detection and CIS compliance themes."
     rejections: []
 
   infra:
