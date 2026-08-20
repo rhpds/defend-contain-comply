@@ -16,7 +16,7 @@ project:
   automation_type: "ansible"
   description: "A hands on lab that takes you through a vulnerability response orchestrated and managed by Ansible Automation Platform. "
   # content_reviewer_email and infra_reviewer_email are assigned by the RHDP team — not set by the author
-  jira_ticket: ""
+  jira_ticket: "RHDPCD-1153"
   workflow_id: "62544834-1a7c-425b-a073-252ff68a2dd3"
 
 spec:

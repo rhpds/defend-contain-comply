@@ -3,8 +3,8 @@ kind: Component
 metadata:
   name: defend-contain-comply
   title: defend-contain-comply
-  description: "A hands on lab that takes you through a vulnerability response
-    orchestrated and managed by Ansible Automation Platform. "
+  description: 'A hands on lab that takes you through a vulnerability response orchestrated
+    and managed by Ansible Automation Platform. '
   annotations:
     ph.rhdp.io/content-type: lab
     ph.rhdp.io/deployment-mode: rhdp_published
@@ -12,21 +12,24 @@ metadata:
     ph.rhdp.io/owner: nmartins@redhat.com
     backstage.io/techdocs-ref: dir:.
     github.com/project-slug: rhpds/defend-contain-comply
-    ph.rhdp.io/created-at: 2026-08-20T14:21:16.401Z
+    ph.rhdp.io/created-at: 2026-08-20 14:21:16.401000+00:00
   tags:
-    - publishing-house
-    - lab
-    - rhdp-published
+  - publishing-house
+  - lab
+  - rhdp-published
   links:
-    - url: https://github.com/rhpds/defend-contain-comply
-      title: Repository
-      icon: github
-    - url: https://devspaces.apps.ocpv-infra02.wdc07.infra.demo.redhat.com#https://github.com/rhpds/defend-contain-comply
-      title: Open in DevSpaces
-      icon: catalog
-    - url: https://central-api-publishing-house.apps.ocpv-infra02.wdc07.infra.demo.redhat.com
-      title: Central
-      icon: dashboard
+  - url: https://github.com/rhpds/defend-contain-comply
+    title: Repository
+    icon: github
+  - url: https://devspaces.apps.ocpv-infra02.wdc07.infra.demo.redhat.com#https://github.com/rhpds/defend-contain-comply
+    title: Open in DevSpaces
+    icon: catalog
+  - url: https://central-api-publishing-house.apps.ocpv-infra02.wdc07.infra.demo.redhat.com
+    title: Central
+    icon: dashboard
+  - url: https://redhat.atlassian.net/browse/RHDPCD-1153
+    title: Jira Epic
+    icon: dashboard
 spec:
   type: content
   lifecycle: experimental
