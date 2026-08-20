@@ -82,8 +82,8 @@ Intermediate
 - **Cloud provider:** CNV
 - **Cluster type:** N/A (VM-based lab, not OCP workloads)
 - **OCP version:** N/A
-- **Topology:** TBD -- confirmed in infrastructure phase
-- **Sizing:** TBD -- confirmed in infrastructure phase (4 VMs per student: control 8 vCPU/64GB, 2x app servers 4 vCPU/16GB, central services 4 vCPU/8GB)
+- **Topology:** Per-student
+- **Sizing:** 4 VMs per student: 1 control (8 vCPU, 64GB RAM, 80GB disk), 2 app servers (4 vCPU, 16GB RAM, 30GB disk each), 1 central services (4 vCPU, 8GB RAM, 30GB disk) + Gitea container (4GB memory)
 - **Automation approach:** Ansible
 - **AI/MaaS:** None
 - **External services:** registry.access.redhat.com, github.com

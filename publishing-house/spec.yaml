@@ -42,7 +42,7 @@ spec:
       status: not_started
   environment:
     platform: "rhel-vms"
-    topology: ""               # TBD — confirmed in infrastructure phase
+    topology: "per-student"
     cloud_provider: cnv
     max_concurrent_users: null # TBD — confirmed in infrastructure phase
 
