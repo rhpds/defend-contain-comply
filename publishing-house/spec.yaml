@@ -12,7 +12,7 @@ project:
   deployment_mode: "self_published"
   initiative_key: "rh1_2027"
   showroom_type: "zero_touch"
-  intake_type: "new"
+  intake_type: "migration"
   automation_type: "ansible"
   description: "A hands on lab that takes you through a vulnerability response orchestrated and managed by Ansible Automation Platform. "
   # content_reviewer_email and infra_reviewer_email are assigned by the RHDP team — not set by the author
