@@ -1,0 +1,11 @@
+site_name: Defend, Contain, Comply
+docs_dir: publishing-house/spec
+nav:
+- Home: index.md
+- Design Spec: design.md
+- Modules:
+  - Module 1 - Defend: modules/module-01-defend.md
+  - Module 2 - Contain: modules/module-02-contain.md
+  - Module 3 - Comply: modules/module-03-comply.md
+plugins:
+- techdocs-core
