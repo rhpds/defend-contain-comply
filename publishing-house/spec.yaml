@@ -1,54 +1,49 @@
-# Publishing House — Project Spec
-# Lifecycle: intake → content_review → infra_review → jira_sync → development → ready → published
-# No secrets in this file. Tokens live in ~/.config/publishing-house/auth.json
-# Stage is managed by SonataFlow and cached in .ph-state — do not edit stage.current manually.
-# NOTE: This file is also in the template repo. The Scaffolder overlays project.* values.
-# TODO: Eliminate this copy — Scaffolder should pull from template repo directly.
-
 project:
-  slug: "defend-contain-comply"
-  owner_email: "nmartins@redhat.com"
-  content_type: "lab"
-  deployment_mode: "rhdp_published"
-  initiative_key: "rh1_2027"
-  showroom_type: "zero_touch"
-  intake_type: "migration"
-  automation_type: "ansible"
-  description: "A hands on lab that takes you through a vulnerability response orchestrated and managed by Ansible Automation Platform. "
-  # content_reviewer_email and infra_reviewer_email are assigned by the RHDP team — not set by the author
-  jira_ticket: "RHDPCD-1153"
-  workflow_id: "62544834-1a7c-425b-a073-252ff68a2dd3"
-
+  slug: defend-contain-comply
+  owner_email: nmartins@redhat.com
+  content_type: lab
+  deployment_mode: rhdp_published
+  initiative_key: rh1_2027
+  showroom_type: zero_touch
+  intake_type: migration
+  automation_type: ansible
+  description: 'A hands on lab that takes you through a vulnerability response orchestrated
+    and managed by Ansible Automation Platform. '
+  jira_ticket: RHDPCD-1153
+  workflow_id: 62544834-1a7c-425b-a073-252ff68a2dd3
 spec:
-  title: "Defend, Contain, Comply"
+  title: Defend, Contain, Comply
   learning_objectives:
-    - "Implement automated CVE detection and containment by integrating Splunk alerts with Event-Driven Ansible rulebooks"
-    - "Build policy-gated remediation workflows in AAP using OPA policies as execution gates and approval nodes"
-    - "Deploy end-to-end compliance pipelines that audit systems against CIS benchmarks, apply hardening, and generate HTML compliance reports"
-    - "Create hardened container images from UBI9-minimal with OpenSCAP scanning and push them to a local registry"
-    - "Automate multi-step vulnerability response workflows that combine firewall isolation, service hardening, SELinux enforcement, and AIDE integrity monitoring"
+  - Implement automated CVE detection and containment by integrating Splunk alerts
+    with Event-Driven Ansible rulebooks
+  - Build policy-gated remediation workflows in AAP using OPA policies as execution
+    gates and approval nodes
+  - Deploy end-to-end compliance pipelines that audit systems against CIS benchmarks,
+    apply hardening, and generate HTML compliance reports
+  - Create hardened container images from UBI9-minimal with OpenSCAP scanning and
+    push them to a local registry
+  - Automate multi-step vulnerability response workflows that combine firewall isolation,
+    service hardening, SELinux enforcement, and AIDE integrity monitoring
   modules:
-    - id: module-01
-      title: "DEFEND: Detect and Contain"
-      duration_min: 40
-      status: not_started
-    - id: module-02
-      title: "CONTAIN: Policy-Gated Remediation"
-      duration_min: 40
-      status: not_started
-    - id: module-03
-      title: "COMPLY: Audit, Harden, Deliver"
-      duration_min: 45
-      status: not_started
+  - id: module-01
+    title: 'DEFEND: Detect and Contain'
+    duration_min: 40
+    status: not_started
+  - id: module-02
+    title: 'CONTAIN: Policy-Gated Remediation'
+    duration_min: 40
+    status: not_started
+  - id: module-03
+    title: 'COMPLY: Audit, Harden, Deliver'
+    duration_min: 45
+    status: not_started
   environment:
-    platform: "rhel-vms"
-    topology: "per-student"
+    platform: rhel-vms
+    topology: per-student
     cloud_provider: cnv
-    max_concurrent_users: null # TBD — confirmed in infrastructure phase
-
-    # --- OCP-specific fields (only when platform = ocp) ---
-    ocp_version: ""                    # N/A — VM-based lab
-    cluster_type: ""                   # N/A — VM-based lab
+    max_concurrent_users: null
+    ocp_version: ''
+    cluster_type: ''
     control_plane_instance_count: null
     control_plane_cpu: null
     control_plane_ram_gb: null
@@ -56,44 +51,39 @@ spec:
     worker_cpu: null
     worker_ram_gb: null
     worker_disk_gb: null
-
-    # --- VM-specific fields (only when platform = rhel-vms) ---
     vms_per_student:
-      - role: control
-        count: 1
-        cpu: 8
-        ram_gb: 64
-        disk_gb: 80
-        os: "RHEL 9.5 (aap-2.6-2-ceh image)"
-      - role: app-server
-        count: 2
-        cpu: 4
-        ram_gb: 16
-        disk_gb: 30
-        os: "RHEL 9.5"
-      - role: central-services
-        count: 1
-        cpu: 4
-        ram_gb: 8
-        disk_gb: 30
-        os: "RHEL 9.5"
-
-    # --- Common fields (both platforms) ---
-    aap_version: "2.5"
-    ai_requirement: "none"
-    ai_model_tier: ""
-    ai_model_name: ""
-    ai_justification: ""
+    - role: control
+      count: 1
+      cpu: 8
+      ram_gb: 64
+      disk_gb: 80
+      os: RHEL 9.5 (aap-2.6-2-ceh image)
+    - role: app-server
+      count: 2
+      cpu: 4
+      ram_gb: 16
+      disk_gb: 30
+      os: RHEL 9.5
+    - role: central-services
+      count: 1
+      cpu: 4
+      ram_gb: 8
+      disk_gb: 30
+      os: RHEL 9.5
+    aap_version: '2.5'
+    ai_requirement: none
+    ai_model_tier: ''
+    ai_model_name: ''
+    ai_justification: ''
     non_ga_products: []
-    non_ga_access_plan: ""
+    non_ga_access_plan: ''
     external_services:
-      - "registry.access.redhat.com"
-      - "github.com"
+    - registry.access.redhat.com
+    - github.com
     gpu_nodes: 0
-    gpu_type: ""
+    gpu_type: ''
   duration_hours: 2.5
-  audience: "intermediate"
-
+  audience: intermediate
 development:
   automation:
     ansible:
@@ -102,48 +92,81 @@ development:
     status: not_started
   healthCheck:
     status: not_started
-
 compliance:
   last_hard_check: null
   hard_result: null
-
 tracking:
   paused: false
   pause_reason: null
-
-# Approval checklist — filled collaboratively by author + skill + system + reviewers
 approval_checklist:
-
   content:
     prerequisites_verifiable: false
-    assessment_strategy: "Each module contains 7 exercises with verification steps. Completion confirmed through observable outcomes: Splunk alert correlation, AAP job status, workflow node results, OPA policy outputs, compliance reports, and container scan results."
-    catalog_gap: "Unique combination of EDA+Splunk automated CVE response, OPA policy-as-code enforcement in AAP workflows, and full audit-harden-build-scan compliance pipeline. Existing catalog covers pieces (EDA+Splunk in AI-Driven lab, CIS scanning in Lightspeed lab) but nothing ties all three together end-to-end."
-    design_overview: "This lab teaches automated vulnerability response using Red Hat Ansible Automation Platform. Participants progress through three phases — detection and containment with Event-Driven Ansible, policy-gated remediation with OPA and AAP workflows, and auditable compliance with CIS hardening and hardened container builds — covering the full lifecycle from CVE alert to compliance evidence."
+    assessment_strategy: 'Each module contains 7 exercises with verification steps.
+      Completion confirmed through observable outcomes: Splunk alert correlation,
+      AAP job status, workflow node results, OPA policy outputs, compliance reports,
+      and container scan results.'
+    catalog_gap: Unique combination of EDA+Splunk automated CVE response, OPA policy-as-code
+      enforcement in AAP workflows, and full audit-harden-build-scan compliance pipeline.
+      Existing catalog covers pieces (EDA+Splunk in AI-Driven lab, CIS scanning in
+      Lightspeed lab) but nothing ties all three together end-to-end.
+    design_overview: "This lab teaches automated vulnerability response using Red\
+      \ Hat Ansible Automation Platform. Participants progress through three phases\
+      \ \u2014 detection and containment with Event-Driven Ansible, policy-gated remediation\
+      \ with OPA and AAP workflows, and auditable compliance with CIS hardening and\
+      \ hardened container builds \u2014 covering the full lifecycle from CVE alert\
+      \ to compliance evidence."
     module_summaries:
-      - title: "DEFEND: Detect and Contain"
-        overview: "Participants investigate a CVE in Splunk, run manual containment playbooks (firewall isolation, httpd hardening, SELinux, AIDE), then build an EDA rulebook that automates the same response triggered by Splunk alerts."
-      - title: "CONTAIN: Policy-Gated Remediation"
-        overview: "Participants create OPA patch policies, build a 5-node AAP workflow with approval gates and policy-as-code execution checks, run end-to-end remediation, and demonstrate policy violation handling."
-      - title: "COMPLY: Audit, Harden, Deliver"
-        overview: "Participants audit systems against 13 OPA compliance controls, apply CIS hardening, generate HTML compliance reports, build hardened container images from UBI9-minimal with OpenSCAP scanning, and run a full compliance AAP workflow."
+    - title: 'DEFEND: Detect and Contain'
+      overview: Participants investigate a CVE in Splunk, run manual containment playbooks
+        (firewall isolation, httpd hardening, SELinux, AIDE), then build an EDA rulebook
+        that automates the same response triggered by Splunk alerts.
+    - title: 'CONTAIN: Policy-Gated Remediation'
+      overview: Participants create OPA patch policies, build a 5-node AAP workflow
+        with approval gates and policy-as-code execution checks, run end-to-end remediation,
+        and demonstrate policy violation handling.
+    - title: 'COMPLY: Audit, Harden, Deliver'
+      overview: Participants audit systems against 13 OPA compliance controls, apply
+        CIS hardening, generate HTML compliance reports, build hardened container
+        images from UBI9-minimal with OpenSCAP scanning, and run a full compliance
+        AAP workflow.
     rcars_overlap_pct: 84
     rcars_top_matches:
-      - title: "Introduction to AI-Driven Ansible Automation: Self-healing, Observability-Driven AIOps"
-        ci_name: "published.ai-driven-aap.prod"
-        url: "https://catalog.demo.redhat.com/catalog?item=published.ai-driven-aap.prod"
-        relevance_score: 84
-        why_it_fits: "Covers Event-Driven Ansible with Splunk integration, CVE detection and remediation via Lightspeed, and RHEL self-healing workflows — overlapping with automated CVE detection/containment with EDA and Splunk."
-      - title: "Hands on with Red Hat Lightspeed in Satellite"
-        ci_name: "zt-rhelbu.zt-lightspeed-satellite.prod"
-        url: "https://catalog.demo.redhat.com/catalog?item=zt-rhelbu.zt-lightspeed-satellite.prod"
-        relevance_score: 53
-        why_it_fits: "Covers CVE identification, remediation playbook generation, and CIS Level 1 compliance scanning with OpenSCAP on RHEL, partially overlapping with CVE detection and CIS compliance themes."
-    rejections: []
-
+    - title: 'Introduction to AI-Driven Ansible Automation: Self-healing, Observability-Driven
+        AIOps'
+      ci_name: published.ai-driven-aap.prod
+      url: https://catalog.demo.redhat.com/catalog?item=published.ai-driven-aap.prod
+      relevance_score: 84
+      why_it_fits: "Covers Event-Driven Ansible with Splunk integration, CVE detection\
+        \ and remediation via Lightspeed, and RHEL self-healing workflows \u2014 overlapping\
+        \ with automated CVE detection/containment with EDA and Splunk."
+    - title: Hands on with Red Hat Lightspeed in Satellite
+      ci_name: zt-rhelbu.zt-lightspeed-satellite.prod
+      url: https://catalog.demo.redhat.com/catalog?item=zt-rhelbu.zt-lightspeed-satellite.prod
+      relevance_score: 53
+      why_it_fits: Covers CVE identification, remediation playbook generation, and
+        CIS Level 1 compliance scanning with OpenSCAP on RHEL, partially overlapping
+        with CVE detection and CIS compliance themes.
+    rejections:
+    - id: 9d587f5f-67f4-4fff-9434-9d22394117f5
+      text: Currently 30 minutes over budget for RH1. Please try to shrink either
+        in fact or on paper to fit the 2 hour slot. Or just be honest that one of
+        the modules will be a stretch.
+      resolved: false
+      reviewer: nstephan@redhat.com
+      timestamp: '2026-08-26T10:18:48.427936+00:00'
+    - id: 19a06967-d695-407b-b0ea-2b36ec507316
+      text: When reviewing all of the topics to be covered at RH1, the field asked
+        specifically to cover Compliance Dashboard in one of the Ansible labs - this
+        seemed like a logical candidate after discussing with Andrius. Compliance
+        Dashboard at the beginning shows X and at the end shows Y. If you can intergrate
+        this in, it would be very welcome.
+      resolved: false
+      reviewer: nstephan@redhat.com
+      timestamp: '2026-08-26T10:18:48.427936+00:00'
   infra:
     peak_environments: null
-    cost_per_run_est: ""
-    provisioning_time_est: ""
-    agnosticv_base_ci: ""
-    approved_by: ""
+    cost_per_run_est: ''
+    provisioning_time_est: ''
+    agnosticv_base_ci: ''
+    approved_by: ''
     rejections: []
