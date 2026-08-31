@@ -151,7 +151,7 @@ approval_checklist:
       text: Currently 30 minutes over budget for RH1. Please try to shrink either
         in fact or on paper to fit the 2 hour slot. Or just be honest that one of
         the modules will be a stretch.
-      resolved: false
+      resolved: true
       reviewer: nstephan@redhat.com
       timestamp: '2026-08-26T10:18:48.427936+00:00'
     - id: 19a06967-d695-407b-b0ea-2b36ec507316
@@ -160,7 +160,7 @@ approval_checklist:
         seemed like a logical candidate after discussing with Andrius. Compliance
         Dashboard at the beginning shows X and at the end shows Y. If you can intergrate
         this in, it would be very welcome.
-      resolved: false
+      resolved: true
       reviewer: nstephan@redhat.com
       timestamp: '2026-08-26T10:18:48.427936+00:00'
   infra:
