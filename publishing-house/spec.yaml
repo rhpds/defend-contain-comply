@@ -82,7 +82,7 @@ spec:
     - github.com
     gpu_nodes: 0
     gpu_type: ''
-  duration_hours: 2.5
+  duration_hours: 2
   audience: intermediate
 development:
   automation:

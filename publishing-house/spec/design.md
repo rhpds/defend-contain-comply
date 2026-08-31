@@ -56,8 +56,7 @@ Lab (hands-on)
 | 2 | CONTAIN: Policy-Gated Remediation | 40 min |
 | 3 | COMPLY: Audit, Harden, Deliver | 45 min |
 | -- | **Total hands-on** | **2 hours 5 min** |
-| -- | Intro + Overview + Conclusion | ~25 min |
-| -- | **Total lab** | **~2.5 hours** |
+| -- | **Total lab** | **~2 hours** |
 
 ## Difficulty Level
 
