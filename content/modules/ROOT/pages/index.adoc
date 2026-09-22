@@ -1,0 +1,37 @@
+include::partial$_attributes.adoc[]
+
+= Defend, Contain, Comply
+:source-highlighter: rouge
+:toc: macro
+:toclevels: 1
+
+toc::[]
+
+Welcome to the **Defend, Contain, Comply** workshop — a hands-on Ansible Automation Platform experience focused on vulnerability management.
+
+== What you will learn
+
+In this {lab_duration} workshop you will manage a complete vulnerability lifecycle on a RHEL system using AAP:
+
+* **Module 1 — DEFEND**: Detect a critical CVE and automate containment when no patch exists
+* **Module 2 — CONTAIN**: Apply a policy-gated patching workflow once an errata is published
+* **Module 3 — COMPLY**: Validate compliance, apply CIS hardening, generate evidence, and deliver a hardened container
+
+== Workshop environment
+
+Your lab provides:
+
+* AAP Controller — orchestrates all automation workflows
+* EDA Controller — receives Splunk webhook alerts and triggers responses
+* RHEL 9 application server — runs a customer-facing `httpd` instance
+* Local container registry — for supply chain delivery in Module 3
+
+== How to use this guide
+
+Each module follows a progressive narrative. Commands marked with the `execute` role can be run directly from the terminal tab.
+
+IMPORTANT: Complete the modules in order — each builds on the previous one.
+
+== Ready?
+
+Start with the xref:01-overview.adoc[Workshop Overview] to understand your mission.

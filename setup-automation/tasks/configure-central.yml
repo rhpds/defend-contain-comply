@@ -1,0 +1,27 @@
+---
+# Central node configure: run errata repo and Splunk alerts playbooks.
+# Replaces setup-central-configure.sh
+
+- name: Run errata repo configuration
+  ansible.builtin.command:
+    cmd: >-
+      ansible-playbook lab/setup/configure-errata-repo.yml
+      -i lab/inventory/workshop.yml
+      -c local
+    chdir: "{{ workshop_repo_dest }}"
+  environment:
+    ANSIBLE_HOST_KEY_CHECKING: "False"
+  register: _errata_config
+  changed_when: true
+
+- name: Run Splunk alerts configuration
+  ansible.builtin.command:
+    cmd: >-
+      ansible-playbook lab/setup/configure-splunk-alerts.yml
+      -i lab/inventory/workshop.yml
+      -c local
+    chdir: "{{ workshop_repo_dest }}"
+  environment:
+    ANSIBLE_HOST_KEY_CHECKING: "False"
+  register: _splunk_config
+  changed_when: true
