@@ -1,0 +1,21 @@
+name: modules
+title: "Defend, Contain, Comply"
+version: master
+nav:
+  - modules/ROOT/nav.adoc
+
+asciidoc:
+  attributes:
+    lab_name: "Defend, Contain, Comply"
+    release-version: master
+    page-pagination: true
+    guid: my-guid
+    ssh_user: rhel
+    ssh_password: ansible123!
+    ssh_command: ssh rhel@control
+    target_cve: CVE-2024-38476
+    target_advisory: RHSA-2024:5138
+    company_name: Parasol Finance
+    page-links:
+    - url: https://redhat.com
+      text: Red Hat

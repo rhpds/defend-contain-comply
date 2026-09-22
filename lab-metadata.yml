@@ -1,0 +1,49 @@
+# lab-metadata.yml
+# Single Point of Truth for Lab Information
+
+lab:
+  name: "Defend,Contain and Comply"
+  shortname: "zt-ans-defend-contain-complu"
+  maintainer: "Nuno Martins (nmartins@redhat.com)" 
+  
+  description:
+    summary: "Exeprience CVE management and mitigation with Ansible Automation Platform"
+    goal: "React to a CVE by mitigation, containment and patching. Drive policy and compliance."
+    concepts:
+     - "CVE"
+    use_case: "Mitigation of CVEs"
+    time_to_complete: "90"
+    
+  git_ref:
+    production: "v0.0.1"
+    development: "dev"
+
+# DYNAMIC EXTRACTION SOURCES:
+# ===========================
+#
+# GENERATED FILES:
+# description.adoc: Generated from lab.description (goal, concepts, use_case)
+# README.md: Generated from configuration extraction (maintainer, summary, instances, networks, firewall)
+# dev.yaml: Generated using git_ref.development (defaults to "main" if not specified)
+# prod.yaml: Generated using git_ref.production (required)
+#
+# Example usage:
+# lab:
+#   name: "Red Hat OpenShift Networking Basics"      # Full name of the lab that appears in the catalog
+#   shortname: "zt-ocp-networking-basics"            # Shortname for the lab (used for catalog entry)
+#   maintainer: "Wilson Harris (wharris@redhat.com)" # Lab maintainer / developer
+#
+#   description:
+#     summary: "Learn the fundamentals of networking in Red Hat OpenShift" # Short summary of the lab
+#     goal: "Understand OpenShift networking concepts and configuration"   # Longer description of the lab's goal
+#     concepts:                                                            # List of concepts covered in the lab
+#       - "OpenShift Services"
+#       - "Routes and Ingress"
+#       - "Network Policies"
+#     use_case: "Configure networking for containerized applications"      # Use case for the lab
+#     time_to_complete: "10"                                               # time in minutes to complete the lab
+#   
+#   git_ref:
+#     production: "prod"    # Production git reference (required)
+#     # development: "dev"  # Optional: defaults to "main" if not specified
+#

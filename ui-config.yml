@@ -1,0 +1,45 @@
+---
+antora:
+  name: modules
+  dir: www
+  modules:
+    - name: index
+      label: "Introduction"
+      solveButton: false
+    - name: 01-overview
+      label: "Workshop Overview"
+      solveButton: false
+    - name: 03-module-01-defend
+      label: "DEFEND: Detect and Contain"
+      solveButton: false
+    - name: 04-module-02-contain
+      label: "CONTAIN: Policy-Gated Remediation"
+      solveButton: false
+    - name: 05-module-03-comply
+      label: "COMPLY: Audit, Harden, Deliver"
+      solveButton: false
+    - name: 99-conclusion
+      label: "Conclusion"
+      solveButton: false
+
+tabs:
+  - name: "Terminal"
+    url: /wetty_central
+  - name: AAP Controller
+    url: https://control-${guid}.${domain}/
+    external: false
+  - name: "Portal - rhel01"
+    url: https://app-${guid}.${domain}/
+    external: true
+  - name: "Portal - rhel02"
+    url: https://app2-${guid}.${domain}/
+    external: true
+  - name: "Compliance Portal"
+    url: https://compliance-${guid}.${domain}/
+    external: true
+  - name: Splunk
+    url: https://splunk-http-${guid}.${domain}
+    external: true
+  - name: Gitea
+    url: https://gitea-${guid}.${domain}/
+    external: true

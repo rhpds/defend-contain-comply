@@ -1,0 +1,93 @@
+---
+# Restore DCC lab runtime state after a VM stop/start.
+# Checks and restarts services that may not survive a reboot.
+#
+# Usage: ansible-playbook recover-after-restart.yml -i <inventory>
+
+- name: Recover central services after restart
+  hosts: central
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Check if Splunk container exists
+      ansible.builtin.command:
+        cmd: podman container exists splunk
+      register: _splunk_exists
+      changed_when: false
+      failed_when: false
+
+    - name: Ensure Splunk container is running
+      when: _splunk_exists.rc == 0
+      block:
+        - name: Get Splunk container state
+          ansible.builtin.command:
+            cmd: podman inspect splunk --format '{{ "{{" }}.State.Running{{ "}}" }}'
+          register: _splunk_running
+          changed_when: false
+
+        - name: Start Splunk container
+          ansible.builtin.systemd:
+            name: container-splunk
+            state: started
+          when: _splunk_running.stdout != 'true'
+          failed_when: false
+
+    - name: Check if OPA container exists
+      ansible.builtin.command:
+        cmd: podman container exists opa
+      register: _opa_exists
+      changed_when: false
+      failed_when: false
+
+    - name: Ensure OPA container is running
+      when: _opa_exists.rc == 0
+      block:
+        - name: Get OPA container state
+          ansible.builtin.command:
+            cmd: podman inspect opa --format '{{ "{{" }}.State.Running{{ "}}" }}'
+          register: _opa_running
+          changed_when: false
+
+        - name: Start OPA container
+          ansible.builtin.systemd:
+            name: container-opa
+            state: started
+          when: _opa_running.stdout != 'true'
+          failed_when: false
+
+    - name: Check errata repo service
+      ansible.builtin.systemd:
+        name: dcc-errata-repo
+      register: _errata_service
+      failed_when: false
+
+    - name: Start errata repo service
+      ansible.builtin.systemd:
+        name: dcc-errata-repo
+        state: started
+      when:
+        - _errata_service.status is defined
+        - _errata_service.status.UnitFileState == 'enabled'
+        - _errata_service.status.ActiveState != 'active'
+
+- name: Recover app server services after restart
+  hosts: rhel01
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Check httpd service
+      ansible.builtin.systemd:
+        name: httpd
+      register: _httpd_service
+      failed_when: false
+
+    - name: Start httpd service
+      ansible.builtin.systemd:
+        name: httpd
+        state: started
+      when:
+        - _httpd_service.status is defined
+        - _httpd_service.status.UnitFileState == 'enabled'
+        - _httpd_service.status.ActiveState != 'active'

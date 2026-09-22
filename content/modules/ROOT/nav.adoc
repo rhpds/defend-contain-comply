@@ -1,0 +1,6 @@
+* xref:index.adoc[Workshop Home]
+* xref:01-overview.adoc[Workshop Overview]
+* xref:03-module-01-defend.adoc[Module 1: DEFEND — Detect and Contain]
+* xref:04-module-02-contain.adoc[Module 2: CONTAIN — Policy-Gated Remediation]
+* xref:05-module-03-comply.adoc[Module 3: COMPLY — Audit, Harden, Deliver]
+* xref:99-conclusion.adoc[Conclusion]
