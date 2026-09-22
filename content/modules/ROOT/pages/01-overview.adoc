@@ -1,0 +1,128 @@
+include::partial$_attributes.adoc[]
+
+= Workshop Overview
+:toc:
+:toc-placement: preamble
+:icons: font
+
+== Your role and mission
+
+You're a **platform engineer** at **Parasol Finance**, responsible for the security posture of production RHEL infrastructure. Your team manages customer-facing application servers running `httpd` behind a load balancer.
+
+This morning, your Splunk Enterprise Security console fires a critical alert: **CVE-2024-38476** — a Server-Side Request Forgery vulnerability in Apache HTTP Server's `mod_rewrite` module — has been detected on your production application server. The CVSS score is **9.8 (Critical)**.
+
+There is no patch available yet.
+
+Your CISO needs a response within the hour. Your assignment: use Ansible Automation Platform to **defend** the system, **contain** the threat when a patch arrives, and **comply** by proving the system meets baselines and delivering a hardened container.
+
+== Success criteria for your mission
+
+By the end of this workshop, you'll have practical AAP skills to address Parasol Finance's vulnerability management requirements:
+
+* **Automated detection response** → EDA rulebook triggers containment within seconds of alert
+* **Zero-touch containment** → Firewall, SELinux, and AIDE deployed without manual SSH
+* **OPA policy-gated patching** → Advisory applied only after OPA validates backup, window, disk, and health gates
+* **Compliance evidence** → 13 OPA controls audited, CIS-hardened, with before/after HTML report
+* **Immutable delivery** → Hardened application containerized, scanned, and pushed to trusted registry
+
+**Technical outcome**: End-to-end vulnerability lifecycle automation using AAP Controller, EDA, OPA, and Podman.
+
+**Business benefit**: Mean-time-to-contain drops from hours to seconds; patching and compliance include built-in policy enforcement.
+
+== Target audience
+
+This workshop is designed for:
+
+* Platform engineers who manage RHEL infrastructure at scale
+* Security operations teams evaluating AAP for vulnerability response
+* DevOps practitioners interested in policy-as-code for patching
+* Anyone interested in Event-Driven Ansible for security automation
+
+== Prerequisites
+
+You should have:
+
+* Basic Ansible playbook experience (YAML, modules, tasks)
+* Familiarity with RHEL system administration (dnf, systemd, firewalld)
+* Understanding of CVE/advisory concepts (no security expertise required)
+* Access to the lab environment (provided)
+
+== Parasol Finance's challenges
+
+**The situation**: Parasol Finance processes 2 million transactions daily. Any customer-facing service outage or compromise has immediate regulatory and reputational impact.
+
+**Current challenges**:
+
+* **Slow incident response**: Manual SSH-based containment takes 45+ minutes per affected host
+* **Inconsistent patching**: Different teams apply patches differently — no policy enforcement
+* **Audit gaps**: Compliance evidence is gathered manually, often weeks after remediation
+* **No supply chain control**: Application deployments lack provenance and vulnerability scanning
+
+**The opportunity**: Ansible Automation Platform can address all four challenges across three integrated modules — Defend, Contain, Comply — and you're going to prove it today.
+
+== Timing
+
+[cols="1,3,1",options="header"]
+|===
+| Module | Topic | Duration
+
+| 1
+| **DEFEND** — Detect CVE via Splunk/EDA, automate containment and hardening
+| ~40 min
+
+| 2
+| **CONTAIN** — OPA policy-gated patching workflow with compliance verification
+| ~40 min
+
+| 3
+| **COMPLY** — Compliance audit, CIS hardening, evidence generation, container build and delivery
+| ~45 min
+
+| —
+| Wrap-up and Q&A
+| ~10 min
+|===
+
+Total: **{lab_duration}** depending on pace and discussion.
+
+== Environment details
+
+Your lab consists of:
+
+[cols="1,2,2",options="header"]
+|===
+| Host | Role | Access
+
+| `aap-controller`
+| AAP Controller 2.5 — workflow orchestration
+| Web UI tab
+
+| `eda-controller`
+| EDA Controller — rulebook activations
+| Web UI tab
+
+| `rhel01`
+| RHEL 9 target with httpd (vulnerable package pre-staged)
+| Terminal tab (SSH)
+
+| `localhost:5000`
+| Container registry (Podman-based)
+| Available from rhel01
+|===
+
+== Credentials
+
+[cols="1,2",options="header"]
+|===
+| Credential | Value
+
+| AAP Controller admin
+| `admin` / `ansible123!`
+
+| App server SSH
+| `rhel` / `ansible123!`
+|===
+
+== Next steps
+
+Begin with xref:03-module-01-defend.adoc[Module 1: DEFEND — Detect and Contain].

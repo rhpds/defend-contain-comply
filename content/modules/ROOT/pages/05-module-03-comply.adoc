@@ -1,0 +1,399 @@
+include::partial$_attributes.adoc[]
+
+= Module 3: COMPLY — Audit, Harden, Deliver
+:source-highlighter: rouge
+:toc: macro
+:toclevels: 1
+
+toc::[]
+
+The vulnerability is patched and the service is contained. But remediation alone doesn't satisfy Parasol Finance's compliance requirements — the security team needs **proof** that the system meets organizational baselines, and the application must be delivered as an immutable, scannable container.
+
+In this module you will run a compliance audit against OPA policies, apply CIS-aligned hardening, generate auditable evidence, build a hardened container image, scan it, and push it to registry — all orchestrated by AAP.
+
+== Learning objectives
+
+By the end of this module, you'll be able to:
+
+* Query OPA policy decisions from Ansible playbooks
+* Apply CIS benchmark-aligned hardening controls via AAP
+* Generate compliance evidence reports as workflow artifacts
+* Build, scan, and publish container images using Podman
+* Chain audit → harden → report → build → scan → push into an automated workflow
+
+== Exercise 1: Review the OPA Compliance Policies
+
+[NOTE.why]
+====
+*Why we do this:* Compliance policies define the security baseline your systems must meet. OPA stores these as declarative Rego rules — each control has a clear pass/fail evaluation. Reviewing them first means you understand _what_ the audit will measure: SELinux mode, SSH configuration, file permissions, kernel hardening, unnecessary services. Without this understanding, audit results are just numbers. With it, you can explain every finding to an auditor.
+====
+
+Before running the audit, examine the policies that define Parasol Finance's security baselines.
+
+. Open the *Gitea* tab and navigate to `lab/setup/files/opa-policies/dcc-compliance.rego`. Read through the Rego policy carefully.
++
+Notice the structure:
++
+* Each control is a separate Rego rule (e.g. `selinux_enforcing`, `ssh_root_login_disabled`)
+* Every rule has a `default := false` declaration — if the condition isn't met, the control fails
+* The `controls` array assembles all rules into a structured list with IDs, names, and categories
+* The `result` object returns the overall compliance status, pass/fail counts, and per-control details
+
+. Identify the 13 controls and their categories:
++
+* **SELinux** — Is enforcement mode active?
+* **Firewall** — Is firewalld running?
+* **SSH** — Root login, X11 forwarding, max auth tries, idle timeout
+* **Kernel** — ICMP redirects, send redirects, ASLR
+* **File permissions** — `/etc/passwd`, `/etc/shadow`
+* **Services** — Unnecessary services (`rpcbind`) should be disabled
+* **Vulnerability** — No open CVEs
+
+. From the terminal, verify OPA has the compliance policy loaded:
++
+[source,role="execute"]
+----
+curl -s http://central:8181/v1/policies | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for p in data.get('result', []):
+    print(f\"  {p['id']}\")
+"
+----
++
+You should see `policies/dcc-compliance.rego` in the list.
+
+. Test a single control to see how the input/output contract works:
++
+[source,role="execute"]
+----
+curl -s -X POST http://central:8181/v1/data/dcc/compliance/result \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"selinux_mode": "Enforcing"}}' | python3 -m json.tool
+----
++
+Try changing `"Enforcing"` to `"Permissive"` and see how the result changes. Ansible provides the full set of system facts as input; OPA returns pass/fail per control.
+
+=== Verify
+
+* The compliance policy is loaded in OPA (`policies/dcc-compliance.rego`)
+* You can identify the 13 controls and their categories in the Rego source
+* You understand the input/output contract: Ansible provides system facts, OPA returns pass/fail per control
+
+== Exercise 2: Run the Pre-Hardening Compliance Audit
+
+[NOTE.why]
+====
+*Why we do this:* The pre-hardening audit establishes a baseline — a snapshot of the system's compliance posture _before_ any remediation. This is critical for two reasons: (1) it identifies exactly which controls need fixing, so hardening is targeted rather than shotgun, and (2) it creates the "before" half of the before/after evidence that auditors require. Without a baseline, you can't prove the hardening actually changed anything.
+====
+
+Run the audit playbook to evaluate the system's current compliance posture.
+
+. In AAP Controller, navigate to **Resources → Templates** and find **COMPLY - Compliance Audit**.
++
+Click the rocket icon to **Launch**. When prompted for extra variables, ensure `audit_phase` is set to `pre`:
++
+[source,yaml]
+----
+audit_phase: pre
+----
++
+. Wait for the job to complete. The playbook gathers system facts from the target host, sends them to OPA for evaluation, generates an HTML audit report, and pushes it to the compliance portal.
+
+. Click the **Compliance Portal** tab in the workshop sidebar. You should see a new audit report listed (e.g. `rhel01-audit-pre-2026-07-21.html`). Click it to view the full report.
++
+The report shows:
++
+* A summary grid with overall status, total controls, passed, and failed counts
+* A **Failed Controls** table highlighting exactly which controls need remediation
+* A **All Controls** table with PASS/FAIL status for every control
++
+Some controls may already pass from Module 1 hardening (e.g., SELinux). Others require CIS-level remediation.
+
+=== Verify
+
+* The audit completed and published an HTML report to the compliance portal
+* You can see which controls passed and which failed
+* The failed controls identify exactly what needs to be fixed in the next exercise
+
+== Exercise 3: Apply CIS Hardening
+
+[NOTE.why]
+====
+*Why we do this:* CIS (Center for Internet Security) benchmarks are industry-standard hardening guides. They translate abstract security requirements ("harden SSH") into concrete, measurable controls ("set PermitRootLogin to no, MaxAuthTries to 4, X11Forwarding to no"). Automating CIS hardening with Ansible means every system gets the same configuration — no drift, no missed settings, no "I forgot to harden that one server."
+====
+
+Run the hardening playbook that remediates failed compliance controls.
+
+. In AAP Controller, navigate to **Resources → Templates** and launch **COMPLY - CIS Harden**.
+
+. Watch the job output. The playbook applies hardening in several categories. Once it completes, verify each category from the terminal.
+
+. **Verify SSH hardening** — these are the controls most commonly flagged in audits:
++
+[source,role="execute"]
+----
+ssh rhel01 "sudo sshd -T 2>/dev/null | grep -E '^(permitrootlogin|x11forwarding|maxauthtries|clientaliveinterval)'"
+----
++
+Expected:
++
+* `permitrootlogin no` — prevents direct root access via SSH
+* `x11forwarding no` — disables GUI forwarding (attack surface reduction)
+* `maxauthtries 4` — limits brute-force password attempts
+* `clientaliveinterval 300` — disconnects idle sessions after 5 minutes
+
+. **Verify file permission hardening** — sensitive system files must have restricted permissions:
++
+[source,role="execute"]
+----
+ssh rhel01 'stat -c "%a %n" /etc/passwd /etc/shadow /etc/group /etc/gshadow'
+----
++
+Expected: `644` for passwd/group (readable by all, writable by root), `000` for shadow/gshadow (accessible only by root).
+
+. **Verify kernel parameters** — network stack hardening prevents common attack vectors:
++
+[source,role="execute"]
+----
+ssh rhel01 sysctl net.ipv4.conf.all.accept_redirects net.ipv4.conf.all.send_redirects kernel.randomize_va_space
+----
++
+Expected:
++
+* `accept_redirects = 0` — prevents ICMP redirect attacks (route poisoning)
+* `send_redirects = 0` — host should not send redirects (it's not a router)
+* `randomize_va_space = 2` — ASLR fully enabled (makes memory-based exploits harder)
+
+. **Confirm unnecessary services are disabled** — reducing the listening surface:
++
+[source,role="execute"]
+----
+ssh rhel01 'systemctl is-enabled rpcbind 2>/dev/null; systemctl is-enabled avahi-daemon 2>/dev/null'
+----
++
+Expected: `disabled` or `not-found`. These services are rarely needed on application servers and expose unnecessary network ports.
+
+=== Verify
+
+* SSH configuration matches CIS recommendations
+* File permissions are tightened on sensitive system files
+* Kernel parameters are hardened against network-level attacks
+* Unnecessary services are stopped and disabled
+
+== Exercise 4: Re-Audit and Generate Compliance Report
+
+[NOTE.why]
+====
+*Why we do this:* The post-hardening audit is the proof that remediation worked. By running the exact same audit with the exact same policies, you create a direct comparison: which controls failed before and pass now. This before/after evidence is what auditors actually review — it demonstrates not just that you ran a hardening playbook, but that the hardening achieved the intended security outcome. The HTML compliance report packages this evidence into a format auditors can consume without needing terminal access.
+====
+
+Run the audit again to verify all controls now pass, then generate the formal compliance report.
+
+. Re-run the compliance audit with `audit_phase=post`:
++
+In AAP Controller, launch **COMPLY - Compliance Audit** again. Set the extra variable:
++
+[source,yaml]
+----
+audit_phase: post
+----
+
+. Click the **Compliance Portal** tab. You should now see both the pre-hardening and post-hardening audit reports. Open both and compare:
++
+* The **pre-hardening** report shows several failed controls (SSH, kernel, file permissions, services)
+* The **post-hardening** report should show all controls passing — the CIS hardening fixed them
++
+This before/after comparison is the evidence auditors require.
+
+. Generate the full HTML compliance report:
++
+In AAP Controller, launch **COMPLY - Compliance Report**.
+
+. Return to the **Compliance Portal** tab and refresh. You should now see a compliance report alongside the audit reports. Click it to view the full before/after evidence including package versions, SELinux status, firewall configuration, and SSH hardening.
+
+=== Verify
+
+* All controls pass in the post-hardening audit report
+* The compliance portal shows audit (pre/post) and compliance reports side by side
+* The reports include timestamps, system identifiers, and per-control results
+* All evidence is browsable from the portal — no terminal access needed
+
+== Exercise 5: Build the Hardened Container Image
+
+[NOTE.why]
+====
+*Why we do this:* Containers deliver immutable, reproducible deployments. By building the container from a trusted base image (Red Hat UBI9-minimal), installing only the patched httpd, and running as a non-root user, you create an artifact that embeds the security posture. The container labels include advisory metadata, so downstream systems can trace the image back to the exact remediation event. This is the difference between "the server was patched" and "every deployment of this application is patched."
+====
+
+Now deliver the patched, hardened application as an immutable container.
+
+. First, examine the Containerfile template in the *Gitea* tab — navigate to `lab/templates/Containerfile.j2`.
++
+Review the key security properties:
++
+* **Base image**: `registry.access.redhat.com/ubi9/ubi-minimal` — a Red Hat trusted, minimal base (smaller attack surface than full UBI)
+* **Packages**: Only `httpd` and `mod_ssl` — nothing unnecessary
+* **Runtime user**: `apache` (non-root) — principle of least privilege
+* **Labels**: Include advisory reference and remediation timestamp for traceability
+
+. In AAP Controller, navigate to **Resources → Templates** and launch **COMPLY - Build Container**.
+
+. Wait for the build to complete. The playbook renders the Containerfile template, runs `podman build`, and tags the resulting image.
+
+. Verify the image was built:
++
+[source,role="execute"]
+----
+ssh rhel01 sudo podman images
+----
++
+You should see an image tagged with the advisory reference.
+
+. Inspect the image labels to confirm the security metadata:
++
+[source,role="execute"]
+----
+ssh rhel01 "sudo podman inspect \$(sudo podman images --format '{{.ID}}' | head -1) | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+labels = data[0].get(\"Config\", {}).get(\"Labels\", {})
+for k, v in labels.items():
+    print(f\"  {k}: {v}\")
+'"
+----
+
+. Check the image size — a minimal base should be significantly smaller than a full OS image:
++
+[source,role="execute"]
+----
+ssh rhel01 'sudo podman images --format "table {{.Repository}} {{.Tag}} {{.Size}}"'
+----
+
+=== Verify
+
+* A container image exists tagged with the advisory reference
+* The image is based on UBI9-minimal with patched httpd
+* Image labels include advisory and remediation metadata
+* The image size reflects a minimal base (no unnecessary packages)
+
+== Exercise 6: Scan the Image and Push to Registry
+
+[NOTE.why]
+====
+*Why we do this:* Building the container is not enough — you need to verify it's clean before publishing. The image scan checks for known CVEs in every package inside the container, proving that {target_cve} is not present in the artifact you're about to deploy. Only after the scan passes does the image get pushed to the trusted registry. This scan-before-publish pattern prevents contaminated images from entering your supply chain.
+====
+
+. In AAP Controller, navigate to **Resources → Templates** and launch **COMPLY - Scan Image**.
++
+NOTE: This template uses the **Trusted Pipeline EE** execution environment, which includes `oscap-podman` and other container scanning tools not present in the default EE.
+
+. Review the scan output. Verify that {target_cve} is **not** present in the scan results. The patched `httpd-2.4.62` should have no critical vulnerabilities.
+
+. Now push the verified image to the local registry. In AAP Controller, launch **COMPLY - Push to Registry**.
+
+. Verify the image is in the registry:
++
+[source,role="execute"]
+----
+ssh rhel01 'curl -s http://localhost:5000/v2/_catalog | python3 -m json.tool'
+----
++
+You should see the DCC application image listed.
+
+. List the available tags for the image:
++
+[source,role="execute"]
+----
+ssh rhel01 'curl -s http://localhost:5000/v2/dcc-httpd/tags/list 2>/dev/null | python3 -m json.tool'
+----
+
+=== Verify
+
+* The image scan shows no critical vulnerabilities — {target_cve} is absent
+* The image is pushed to the local registry and accessible via the catalog API
+* The image tag in the registry matches the advisory reference
+
+== Exercise 7: Run the Full Compliance Workflow
+
+[NOTE.why]
+====
+*Why we do this:* Running all seven steps as a single workflow demonstrates the full compliance and delivery pipeline. Each step feeds into the next: audit identifies gaps → harden fixes them → re-audit proves they're fixed → report packages the evidence → build creates the artifact → scan verifies it's clean → push publishes it. In production, this entire chain runs with a single trigger. The workflow artifacts (`set_stats`) create a machine-readable audit trail that spans the entire pipeline.
+====
+
+Chain the full compliance and delivery process into a single AAP workflow.
+
+. In AAP Controller, navigate to **Resources → Templates** and find the **Compliance and Hardening** workflow template (it has a workflow icon, not a job template icon).
+
+. Click on the workflow name to open it, then click the **Visualizer** tab to examine the topology:
++
+* **COMPLY - Compliance Audit** (Pre) — baseline evaluation
+* **COMPLY - CIS Harden** — apply remediation
+* **COMPLY - Compliance Audit** (Post) — verify remediation
+* **COMPLY - Compliance Report** — produce evidence
+* **COMPLY - Build Container** — containerize the application
+* **COMPLY - Scan Image** — verify the container
+* **COMPLY - Push to Registry** — publish to trusted registry
++
+All seven nodes are connected with **On Success** links — if any step fails, the workflow stops.
+
+. Click the **Launch** button (rocket icon) to run the workflow.
+
+. Watch the workflow progress through each node. You can click on individual nodes as they complete to see their job output.
+
+. Once complete, review the `set_stats` artifacts in the workflow job:
++
+In AAP Controller, click on the completed workflow job, then look at the **Extra Vars / Artifacts** panel. You should see data flowing between nodes:
++
+* `pre_audit_pass_count` and `post_audit_pass_count` — shows the improvement
+* `hardening_controls_applied` — number of controls remediated
+* `report_path` — location of the generated compliance report
+
+. Verify the end-to-end results from the terminal:
++
+[source,role="execute"]
+----
+echo "=== Compliance Report ==="
+ssh rhel01 ls -la /tmp/compliance-reports/compliance-report-*.html
+
+echo ""
+echo "=== Container Image ==="
+ssh rhel01 sudo podman images
+
+echo ""
+echo "=== Registry Catalog ==="
+ssh rhel01 'curl -s http://localhost:5000/v2/_catalog | python3 -m json.tool'
+----
+
+=== Verify
+
+* The workflow completed all seven nodes end-to-end
+* All compliance controls pass in the post-hardening audit
+* The compliance report artifact is available
+* The container image is built, scanned clean, and pushed to the registry
+* The `set_stats` artifacts show the full audit trail across workflow nodes
+
+== Module summary
+
+You've successfully completed the COMPLY module — and the entire workshop.
+
+**What you accomplished:**
+
+* Queried OPA compliance policies from Ansible playbooks
+* Ran a baseline compliance audit identifying gaps
+* Applied CIS benchmark-aligned hardening controls
+* Re-audited to verify full compliance
+* Generated an HTML compliance report with before/after evidence
+* Built a hardened container image from a trusted base
+* Scanned and pushed it to a trusted registry
+* Executed the full workflow from audit to delivery
+
+**Key takeaways:**
+
+* OPA provides declarative, version-controlled compliance policies that Ansible can query at runtime
+* CIS benchmarks give concrete, actionable hardening controls — not abstract checklists
+* Before/after auditing creates an evidence trail that satisfies auditors
+* Container supply chains built from automation deliver immutable, scannable deployments
+* AAP workflows chain the entire compliance and delivery process into a single automation
+
+**Congratulations!** Proceed to the xref:99-conclusion.adoc[Conclusion] for a full recap.

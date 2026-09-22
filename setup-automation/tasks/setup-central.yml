@@ -1,0 +1,109 @@
+---
+# Central node bootstrap: packages, collections, clone repo, deploy containers.
+# Replaces setup-central.sh
+#
+# Required variables (from main.yml vars_files or environment):
+#   ahtoken, tmm_orgid, tmm_activation, guid, domain
+
+- name: Assert required variables are set
+  ansible.builtin.assert:
+    that:
+      - ahtoken is defined and ahtoken | length > 0
+      - tmm_orgid is defined and tmm_orgid | length > 0
+      - tmm_activation is defined and tmm_activation | length > 0
+      - guid is defined and guid | length > 0
+      - domain is defined and domain | length > 0
+    fail_msg: "Missing required variables for central bootstrap"
+
+- name: Create Ansible control path directory
+  ansible.builtin.file:
+    path: /root/.ansible/cp
+    state: directory
+    mode: "0700"
+
+- name: Write Ansible configuration with Automation Hub token
+  ansible.builtin.copy:
+    content: |
+      [defaults]
+      [galaxy]
+      server_list = automation_hub, validated, galaxy
+      [galaxy_server.automation_hub]
+      url = https://console.redhat.com/api/automation-hub/content/published/
+      auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+      token={{ ahtoken }}
+      [galaxy_server.validated]
+      url = https://console.redhat.com/api/automation-hub/content/validated/
+      auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+      token={{ ahtoken }}
+      [galaxy_server.galaxy]
+      url=https://galaxy.ansible.com/
+      [ssh_connection]
+      ssh_args = -o ControlMaster=auto -o ControlPersist=60s
+      pipelining = True
+    dest: ~/.ansible.cfg
+    mode: "0600"
+
+- name: Install required packages
+  ansible.builtin.dnf:
+    name:
+      - ansible-core
+      - podman
+      - python3
+      - createrepo_c
+      - git
+    state: present
+
+- name: Write collection requirements
+  ansible.builtin.copy:
+    content: |
+      ---
+      collections:
+        - name: containers.podman
+        - name: ansible.posix
+        - name: community.general
+    dest: /tmp/requirements.yml
+    mode: "0644"
+
+- name: Install Ansible collections
+  ansible.builtin.command:
+    cmd: ansible-galaxy collection install -r /tmp/requirements.yml
+  register: _galaxy_install
+  changed_when: "'was installed' in _galaxy_install.stdout"
+  retries: 3
+  delay: 5
+  until: _galaxy_install.rc == 0
+
+- name: Clone workshop repo
+  ansible.builtin.git:
+    repo: "{{ workshop_repo_url }}"
+    dest: "{{ workshop_repo_dest }}"
+    version: "{{ workshop_repo_branch }}"
+    force: true
+  environment:
+    GIT_TERMINAL_PROMPT: "0"
+
+- name: Create temporary Ansible directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - /tmp/.ansible-cp
+    - /tmp/.ansible-fact-cache
+
+- name: Deploy Splunk and OPA containers
+  ansible.builtin.command:
+    cmd: >-
+      ansible-playbook lab/setup/deploy-central-services.yml
+      -i lab/inventory/workshop.yml
+      -c local
+    chdir: "{{ workshop_repo_dest }}"
+  environment:
+    ANSIBLE_HOST_KEY_CHECKING: "False"
+  register: _deploy_services
+  changed_when: true
+
+- name: Clean up temporary Ansible config
+  ansible.builtin.file:
+    path: ~/.ansible.cfg
+    state: absent

@@ -1,0 +1,149 @@
+---
+# Phase 1: Build dynamic inventory with per-host network variables
+- name: Create inventory
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../config/secrets.yaml
+  tasks:
+    - name: Add central host
+      ansible.builtin.add_host:
+        name: central
+        ansible_ssh_host: central
+        ansible_ssh_port: "{{ lookup('ansible.builtin.env', 'BASTION_PORT') }}"
+        ansible_ssh_user: "{{ lookup('ansible.builtin.env', 'BASTION_USER') }}"
+        ansible_ssh_pass: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_become_password: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_python_interpreter: /usr/libexec/platform-python
+        net_interface: eth1
+        net_address: 192.168.1.11/24
+        net_dns: ""
+        net_dns_search: ""
+        selinux_mode: permissive
+
+    - name: Add control host
+      ansible.builtin.add_host:
+        name: control
+        ansible_ssh_host: control
+        ansible_ssh_port: "{{ lookup('ansible.builtin.env', 'BASTION_PORT') }}"
+        ansible_ssh_user: "{{ lookup('ansible.builtin.env', 'BASTION_USER') }}"
+        ansible_ssh_pass: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_become_password: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_python_interpreter: /usr/libexec/platform-python
+        net_interface: eth1
+        net_address: 192.168.1.10/24
+        net_dns: ""
+        net_dns_search: ""
+        selinux_mode: permissive
+
+    - name: Add rhel01 host (app server)
+      ansible.builtin.add_host:
+        name: rhel01
+        ansible_ssh_host: rhel01
+        ansible_ssh_port: "{{ lookup('ansible.builtin.env', 'BASTION_PORT') }}"
+        ansible_ssh_user: "{{ lookup('ansible.builtin.env', 'BASTION_USER') }}"
+        ansible_ssh_pass: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_become_password: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_python_interpreter: /usr/libexec/platform-python
+        net_interface: eth1
+        net_address: 192.168.1.13/24
+        net_dns: ""
+        net_dns_search: ""
+        selinux_mode: enforcing
+
+    - name: Add rhel02 host (spare)
+      ansible.builtin.add_host:
+        name: rhel02
+        ansible_ssh_host: rhel02
+        ansible_ssh_port: "{{ lookup('ansible.builtin.env', 'BASTION_PORT') }}"
+        ansible_ssh_user: "{{ lookup('ansible.builtin.env', 'BASTION_USER') }}"
+        ansible_ssh_pass: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_become_password: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_python_interpreter: /usr/libexec/platform-python
+        net_interface: eth1
+        net_address: 192.168.1.14/24
+        net_dns: ""
+        net_dns_search: ""
+        selinux_mode: permissive
+
+# Phase 2: Common bootstrap on all hosts in parallel (~90s)
+- name: Common bootstrap
+  hosts: all:!localhost
+  gather_facts: false
+  become: true
+  vars_files:
+    - ../config/secrets.yaml
+  vars:
+    tmm_org: "{{ tmm_orgid }}"
+    tmm_id: "{{ tmm_activation }}"
+    hosts_entries:
+      - ip: 192.168.1.10
+        names: control aap.example.org
+      - ip: 192.168.1.11
+        names: central
+      - ip: 192.168.1.13
+        names: rhel01
+      - ip: 192.168.1.14
+        names: rhel02
+  tasks:
+    - name: Wait for SSH
+      ansible.builtin.wait_for_connection:
+
+    - name: Run common bootstrap tasks
+      ansible.builtin.include_tasks: tasks/common-bootstrap.yml
+
+# Phase 3: Host-specific bootstrap in parallel
+# central: packages, collections, clone repo, deploy Splunk + OPA containers
+# control: repos, packages, collections, clone repo, symlink awx.awx
+- name: Host-specific bootstrap
+  hosts: central,control
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  vars_files:
+    - ../config/secrets.yaml
+  vars:
+    guid: "{{ lookup('ansible.builtin.env', 'GUID') }}"
+    domain: "{{ lookup('ansible.builtin.env', 'DOMAIN') }}"
+    workshop_repo_url: "https://github.com/nmartins0611/zt-ans-defend-contain-comply.git"
+    workshop_repo_dest: /tmp/dcc-workshop
+    workshop_repo_branch: dev
+  tasks:
+    - name: Bootstrap central node
+      ansible.builtin.include_tasks: tasks/setup-central.yml
+      when: inventory_hostname == 'central'
+
+    - name: Bootstrap control node
+      ansible.builtin.include_tasks: tasks/setup-control.yml
+      when: inventory_hostname == 'control'
+
+# Phase 4: Central configure
+# Runs errata repo and Splunk alerts playbooks from cloned repo
+- name: Central service-dependent configuration
+  hosts: central
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  vars_files:
+    - ../config/secrets.yaml
+  vars:
+    workshop_repo_dest: /tmp/dcc-workshop
+  tasks:
+    - name: Configure central services
+      ansible.builtin.include_tasks: tasks/configure-central.yml
+
+# Phase 5: Control configure
+# Waits for AAP, generates OAuth token, runs AAP/EDA configuration
+- name: Control AAP configuration
+  hosts: control
+  gather_facts: false
+  become: true
+  vars_files:
+    - ../config/secrets.yaml
+  vars:
+    workshop_repo_dest: /tmp/dcc-workshop
+    guid: "{{ lookup('ansible.builtin.env', 'GUID') }}"
+    domain: "{{ lookup('ansible.builtin.env', 'DOMAIN') }}"
+  tasks:
+    - name: Configure AAP and EDA
+      ansible.builtin.include_tasks: tasks/configure-control.yml

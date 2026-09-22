@@ -1,0 +1,85 @@
+---
+# DCC Workshop — Network Policy
+# Control: AAP Controller + EDA
+# Central: Splunk, OPA, Errata Repo
+# rhel01:  App Server
+# rhel02:  Spare
+
+ingress:
+- ports:
+  # ── General ──
+  - protocol: TCP
+    port: 22       # SSH
+  - protocol: TCP
+    port: 80       # HTTP
+  - protocol: TCP
+    port: 443      # HTTPS (AAP Controller)
+  # ── OPA ──
+  - protocol: TCP
+    port: 8181     # OPA policy API
+  # ── Splunk ──
+  - protocol: TCP
+    port: 8000     # Splunk web UI
+  - protocol: TCP
+    port: 8088     # Splunk HEC (event collector)
+  - protocol: TCP
+    port: 8089     # Splunk management API
+  - protocol: TCP
+    port: 9997     # Splunk forwarder receiver
+  # ── Gitea ──
+  - protocol: TCP
+    port: 3000     # Gitea web UI
+  # ── EDA ──
+  - protocol: TCP
+    port: 5000     # EDA webhook endpoint
+  - protocol: TCP
+    port: 8443     # EDA Controller UI
+  # ── Errata Repo ──
+  - protocol: TCP
+    port: 8085     # DCC errata yum repo on central
+  # ── Compliance Portal ──
+  - protocol: TCP
+    port: 8086     # DCC compliance report portal on central
+  - from:
+      - podSelector:
+          matchLabels:
+            kubevirt.io: virt-launcher
+egress:
+- ports:
+  # ── General ──
+  - protocol: TCP
+    port: 22       # SSH
+  - protocol: TCP
+    port: 80       # HTTP
+  - protocol: TCP
+    port: 443      # HTTPS
+  # ── OPA ──
+  - protocol: TCP
+    port: 8181     # OPA policy API
+  # ── Splunk ──
+  - protocol: TCP
+    port: 8000     # Splunk web UI
+  - protocol: TCP
+    port: 8088     # Splunk HEC (event collector)
+  - protocol: TCP
+    port: 8089     # Splunk management API
+  - protocol: TCP
+    port: 9997     # Splunk forwarder receiver
+  # ── Gitea ──
+  - protocol: TCP
+    port: 3000     # Gitea web UI
+  # ── EDA ──
+  - protocol: TCP
+    port: 5000     # EDA webhook endpoint
+  - protocol: TCP
+    port: 8443     # EDA Controller UI
+  # ── Errata Repo ──
+  - protocol: TCP
+    port: 8085     # DCC errata yum repo on central
+  # ── Compliance Portal ──
+  - protocol: TCP
+    port: 8086     # DCC compliance report portal on central
+  - to:
+      - podSelector:
+          matchLabels:
+            kubevirt.io: virt-launcher

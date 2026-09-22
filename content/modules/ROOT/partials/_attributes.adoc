@@ -1,0 +1,9 @@
+:lab_name: Defend, Contain, Comply
+:lab_duration: 120-150 minutes
+:company_name: Parasol Finance
+:target_cve: CVE-2024-38476
+:target_advisory: RHSA-2024:5138
+:aap_version: 2.5
+:rhel_version: 9.4
+:aap_admin_password: PROVIDED_AT_RUNTIME
+:eda_admin_password: PROVIDED_AT_RUNTIME
