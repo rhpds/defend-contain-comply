@@ -24,7 +24,8 @@ antora:
 
 tabs:
   - name: "Terminal"
-    url: /wetty_central
+    path: /wetty_central
+    port: 443
   - name: AAP Controller
     url: https://control-${guid}.${domain}/
     external: false
