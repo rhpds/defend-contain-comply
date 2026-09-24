@@ -24,5 +24,5 @@ Defined in `defaults/main.yml`:
 ```yaml
 - hosts: all
   roles:
-    - <your_namespace>.<your_collection_name>.example
+    - defend_contain_comply.automation.example
 ```

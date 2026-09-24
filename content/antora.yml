@@ -6,6 +6,7 @@ nav:
 
 asciidoc:
   attributes:
+    experimental: true
     lab_name: "Defend, Contain, Comply"
     release-version: master
     page-pagination: true
