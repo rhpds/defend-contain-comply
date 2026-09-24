@@ -26,17 +26,17 @@ spec:
     service hardening, SELinux enforcement, and AIDE integrity monitoring
   modules:
   - id: module-01
-    title: 'DEFEND: Detect and Contain'
+    title: 'Module 1: DEFEND — Detect and Contain'
     duration_min: 40
-    status: not_started
+    status: completed
   - id: module-02
-    title: 'CONTAIN: Policy-Gated Remediation'
+    title: 'Module 2: CONTAIN — Patch and Enforce'
     duration_min: 40
-    status: not_started
+    status: completed
   - id: module-03
-    title: 'COMPLY: Audit, Harden, Deliver'
+    title: 'Module 3: COMPLY — Audit, Harden, Deliver'
     duration_min: 45
-    status: not_started
+    status: completed
   environment:
     platform: rhel-vms
     topology: per-student
@@ -111,20 +111,20 @@ approval_checklist:
       Lightspeed lab) but nothing ties all three together end-to-end.
     design_overview: "This lab teaches automated vulnerability response using Red\
       \ Hat Ansible Automation Platform. Participants progress through three phases\
-      \ \u2014 detection and containment with Event-Driven Ansible, policy-gated remediation\
+      \ — detection and containment with Event-Driven Ansible, policy-gated remediation\
       \ with OPA and AAP workflows, and auditable compliance with CIS hardening and\
-      \ hardened container builds \u2014 covering the full lifecycle from CVE alert\
+      \ hardened container builds — covering the full lifecycle from CVE alert\
       \ to compliance evidence."
     module_summaries:
-    - title: 'DEFEND: Detect and Contain'
+    - title: 'Module 1: DEFEND — Detect and Contain'
       overview: Participants investigate a CVE in Splunk, run manual containment playbooks
         (firewall isolation, httpd hardening, SELinux, AIDE), then build an EDA rulebook
         that automates the same response triggered by Splunk alerts.
-    - title: 'CONTAIN: Policy-Gated Remediation'
+    - title: 'Module 2: CONTAIN — Patch and Enforce'
       overview: Participants create OPA patch policies, build a 5-node AAP workflow
         with approval gates and policy-as-code execution checks, run end-to-end remediation,
         and demonstrate policy violation handling.
-    - title: 'COMPLY: Audit, Harden, Deliver'
+    - title: 'Module 3: COMPLY — Audit, Harden, Deliver'
       overview: Participants audit systems against 13 OPA compliance controls, apply
         CIS hardening, generate HTML compliance reports, build hardened container
         images from UBI9-minimal with OpenSCAP scanning, and run a full compliance
@@ -137,7 +137,7 @@ approval_checklist:
       url: https://catalog.demo.redhat.com/catalog?item=published.ai-driven-aap.prod
       relevance_score: 84
       why_it_fits: "Covers Event-Driven Ansible with Splunk integration, CVE detection\
-        \ and remediation via Lightspeed, and RHEL self-healing workflows \u2014 overlapping\
+        \ and remediation via Lightspeed, and RHEL self-healing workflows — overlapping\
         \ with automated CVE detection/containment with EDA and Splunk."
     - title: Hands on with Red Hat Lightspeed in Satellite
       ci_name: zt-rhelbu.zt-lightspeed-satellite.prod
