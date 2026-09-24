@@ -6,19 +6,19 @@ antora:
     - name: index
       label: "Introduction"
       solveButton: false
-    - name: 01-overview
+    - name: overview
       label: "Workshop Overview"
       solveButton: false
-    - name: 03-module-01-defend
+    - name: module-01-defend
       label: "DEFEND — Detect and Contain"
       solveButton: false
-    - name: 04-module-02-contain
+    - name: module-02-contain
       label: "CONTAIN — Patch and Enforce"
       solveButton: false
-    - name: 05-module-03-comply
+    - name: module-03-comply
       label: "COMPLY — Audit, Harden, Deliver"
       solveButton: false
-    - name: 99-conclusion
+    - name: conclusion
       label: "Conclusion"
       solveButton: false
 
