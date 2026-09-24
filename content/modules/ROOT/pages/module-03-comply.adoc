@@ -396,4 +396,4 @@ You've successfully completed the COMPLY module — and the entire workshop.
 * Container supply chains built from automation deliver immutable, scannable deployments
 * AAP workflows chain the entire compliance and delivery process into a single automation
 
-**Congratulations!** Proceed to the xref:99-conclusion.adoc[Conclusion] for a full recap.
+**Congratulations!** Proceed to the xref:conclusion.adoc[Conclusion] for a full recap.

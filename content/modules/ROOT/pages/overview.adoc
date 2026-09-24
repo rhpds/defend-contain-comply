@@ -125,4 +125,4 @@ Your lab consists of:
 
 == Next steps
 
-Begin with xref:03-module-01-defend.adoc[Module 1: DEFEND — Detect and Contain].
+Begin with xref:module-01-defend.adoc[Module 1: DEFEND — Detect and Contain].
