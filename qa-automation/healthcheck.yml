@@ -36,6 +36,14 @@
     hc_connect_timeout: 5
     hc_http_timeout: 15
 
+    # AAP's installer generates a self-signed certificate and this lab ships no
+    # CA bundle, so validation is off by default — the same choice
+    # setup-automation/tasks/configure-control.yml makes against the same host.
+    # To harden: add the lab CA to the bastion trust store (or point hc_ca_path
+    # at it) and run with -e hc_validate_certs=true.
+    hc_validate_certs: false
+    hc_ca_path: ""
+
     # Containers deployed on central by lab/setup/deploy-central-services.yml.
     hc_containers:
       - splunk
@@ -137,7 +145,8 @@
       ansible.builtin.uri:
         url: "{{ item.url }}"
         method: GET
-        validate_certs: false
+        validate_certs: "{{ hc_validate_certs }}"
+        ca_path: "{{ hc_ca_path | default(omit, true) }}"
         timeout: "{{ hc_http_timeout }}"
         status_code: 200
       loop: "{{ hc_endpoints }}"
