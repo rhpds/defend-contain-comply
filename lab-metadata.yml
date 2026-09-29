@@ -3,7 +3,7 @@
 
 lab:
   name: "Defend,Contain and Comply"
-  shortname: "zt-ans-defend-contain-complu"
+  shortname: "zt-ans-defend-contain-comply"
   maintainer: "Nuno Martins (nmartins@redhat.com)" 
   
   description:
