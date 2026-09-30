@@ -34,4 +34,4 @@ IMPORTANT: Complete the modules in order — each builds on the previous one.
 
 == Ready?
 
-Start with the xref:01-overview.adoc[Workshop Overview] to understand your mission.
+Start with the xref:overview.adoc[Workshop Overview] to understand your mission.

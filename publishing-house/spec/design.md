@@ -52,9 +52,9 @@ Lab (hands-on)
 
 | Module | Title | Duration |
 |--------|-------|----------|
-| 1 | DEFEND: Detect and Contain | 40 min |
-| 2 | CONTAIN: Policy-Gated Remediation | 40 min |
-| 3 | COMPLY: Audit, Harden, Deliver | 45 min |
+| 1 | DEFEND — Detect and Contain | 40 min |
+| 2 | CONTAIN — Patch and Enforce | 40 min |
+| 3 | COMPLY — Audit, Harden, Deliver | 45 min |
 | -- | **Total hands-on** | **2 hours 5 min** |
 | -- | **Total lab** | **~2 hours** |
 

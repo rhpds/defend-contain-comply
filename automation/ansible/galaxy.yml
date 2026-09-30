@@ -1,0 +1,10 @@
+---
+namespace: "defend_contain_comply"
+name: "automation"
+version: "1.0.0"
+readme: README.md
+authors:
+  - "nmartins0611 nmartins@redhat.com"
+description: "Starter collection for this project's custom Ansible automation."
+license: []
+repository: "https://github.com/rhpds/defend-contain-comply"

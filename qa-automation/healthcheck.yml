@@ -1,7 +1,15 @@
 ---
-# HEALTHCHECK — Quick environment readiness check (migrated ZT Guided content)
-# Verifies the bastion host is reachable via SSH. Non-destructive: does not
-# modify any lab state. Should complete in under 60 seconds.
+# HEALTHCHECK — Quick environment readiness check (ZT Guided)
+# Runs from the bastion (central) and verifies that every service the lab
+# depends on is actually up. Non-destructive: reads state only, never modifies
+# it. Should complete in well under 60 seconds.
+#
+# Scope note: this checks that *services are running*. It deliberately does not
+# check AAP job templates — qa-automation/e2e.yml already covers those via the
+# per-module runtime-automation/*/validation-central.sh scripts.
+#
+# Every check is collected rather than failed on immediately, so one run reports
+# everything that is broken instead of just the first problem.
 #
 # Exit 0 = healthy, non-zero = unhealthy.
 
@@ -16,11 +24,160 @@
         ansible_ssh_port: "{{ lookup('ansible.builtin.env', 'BASTION_PORT') }}"
         ansible_ssh_user: "{{ lookup('ansible.builtin.env', 'BASTION_USER') }}"
         ansible_ssh_pass: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        # Needed for the podman/systemd checks below; mirrors setup-automation/main.yml.
+        ansible_become_password: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
 
 - name: Healthcheck
   hosts: all:!localhost
   gather_facts: false
-  become: false
+  become: true
+
+  vars:
+    hc_connect_timeout: 5
+    hc_http_timeout: 15
+
+    # AAP's installer generates a self-signed certificate and this lab ships no
+    # CA bundle, so validation is off by default — the same choice
+    # setup-automation/tasks/configure-control.yml makes against the same host.
+    # To harden: add the lab CA to the bastion trust store (or point hc_ca_path
+    # at it) and run with -e hc_validate_certs=true.
+    hc_validate_certs: false
+    hc_ca_path: ""
+
+    # Containers deployed on central by lab/setup/deploy-central-services.yml.
+    hc_containers:
+      - splunk
+      - opa
+
+    # TCP reachability. Ports come from config/instances.yaml.
+    hc_ports:
+      - label: "Splunk web UI"
+        host: "127.0.0.1"
+        port: 8000
+      - label: "Splunk HEC"
+        host: "127.0.0.1"
+        port: 8088
+      - label: "Errata repo"
+        host: "127.0.0.1"
+        port: 8085
+      - label: "Compliance portal"
+        host: "127.0.0.1"
+        port: 8086
+      - label: "AAP Controller"
+        host: "control"
+        port: 443
+      - label: "App portal rhel01"
+        host: "rhel01"
+        port: 80
+      - label: "App portal rhel02"
+        host: "rhel02"
+        port: 80
+
+    # Endpoints with a real health contract, so we assert on the response too.
+    hc_endpoints:
+      - label: "AAP Controller API"
+        url: "https://control/api/controller/v2/ping/"
+      - label: "OPA policy engine"
+        url: "http://127.0.0.1:8181/health"
+
   tasks:
+    - name: Initialise failure list
+      ansible.builtin.set_fact:
+        hc_failures: []
+
     - name: Verify SSH connectivity
       ansible.builtin.ping:
+
+    # ── Containers on central ────────────────────────────────────────────────
+    - name: Check container run state
+      ansible.builtin.command:
+        cmd: "podman inspect {{ item }} --format {% raw %}'{{.State.Running}}'{% endraw %}"
+      loop: "{{ hc_containers }}"
+      register: hc_container_state
+      changed_when: false
+      failed_when: false
+
+    - name: Record containers that are not running
+      ansible.builtin.set_fact:
+        hc_failures: "{{ hc_failures + ['Container not running: ' ~ item.item] }}"
+      loop: "{{ hc_container_state.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: (item.stdout | default('') | trim) != 'true'
+
+    # ── Errata repo systemd unit ─────────────────────────────────────────────
+    - name: Check errata repo service
+      ansible.builtin.systemd:
+        name: dcc-errata-repo
+      register: hc_errata
+      failed_when: false
+
+    - name: Record errata repo service if not active
+      ansible.builtin.set_fact:
+        hc_failures: "{{ hc_failures + ['Service not active: dcc-errata-repo (state: ' ~ _hc_state ~ ')'] }}"
+      vars:
+        _hc_state: "{{ hc_errata.status.ActiveState | default('not found') }}"
+      when: _hc_state != 'active'
+
+    # ── TCP reachability ─────────────────────────────────────────────────────
+    - name: Check TCP ports
+      ansible.builtin.wait_for:
+        host: "{{ item.host }}"
+        port: "{{ item.port }}"
+        timeout: "{{ hc_connect_timeout }}"
+        state: started
+      loop: "{{ hc_ports }}"
+      loop_control:
+        label: "{{ item.label }}"
+      register: hc_port_state
+      failed_when: false
+
+    - name: Record unreachable ports
+      ansible.builtin.set_fact:
+        hc_failures: "{{ hc_failures + ['Port unreachable: ' ~ item.item.label ~ ' (' ~ item.item.host ~ ':' ~ item.item.port ~ ')'] }}"
+      loop: "{{ hc_port_state.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+      when: item.failed | default(false)
+
+    # ── HTTP health endpoints ────────────────────────────────────────────────
+    - name: Check HTTP health endpoints
+      ansible.builtin.uri:
+        url: "{{ item.url }}"
+        method: GET
+        validate_certs: "{{ hc_validate_certs }}"
+        ca_path: "{{ hc_ca_path | default(omit, true) }}"
+        timeout: "{{ hc_http_timeout }}"
+        status_code: 200
+      loop: "{{ hc_endpoints }}"
+      loop_control:
+        label: "{{ item.label }}"
+      register: hc_endpoint_state
+      changed_when: false
+      failed_when: false
+
+    - name: Record failing health endpoints
+      ansible.builtin.set_fact:
+        hc_failures: >-
+          {{ hc_failures + ['Health endpoint failed: ' ~ item.item.label
+             ~ ' (' ~ item.item.url ~ ' -> ' ~ _hc_status ~ ')'] }}
+      vars:
+        _hc_status: "{{ item.status | default('no response') }}"
+      loop: "{{ hc_endpoint_state.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+      when: (item.status | default(0)) != 200
+
+    # ── Verdict ──────────────────────────────────────────────────────────────
+    - name: Report environment health
+      ansible.builtin.assert:
+        that:
+          - hc_failures | length == 0
+        success_msg: >-
+          Environment healthy — {{ hc_containers | length }} container(s),
+          1 service, {{ hc_ports | length }} port(s) and
+          {{ hc_endpoints | length }} health endpoint(s) all OK.
+        fail_msg: |
+          Environment unhealthy — {{ hc_failures | length }} check(s) failed:
+          {{ hc_failures | to_nice_yaml }}
+        quiet: true
