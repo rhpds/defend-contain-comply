@@ -1,0 +1,48 @@
+---
+# DEV-ONLY scratch harness — NOT part of the QA deliverable.
+# Builds the central bastion inventory from BASTION_* env (exactly like e2e.yml),
+# then runs a single task file passed via -e tut=<abs path> on central.
+# Used to test one solve task at a time against the live dev environment.
+#
+# Example:
+#   ansible-playbook /tmp/qadev/qa-automation/.dev/run.yml \
+#     -e tut=/tmp/qadev/qa-automation/tasks/preflight.yml
+
+- name: "dev | build central inventory from env"
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Add bastion (central)
+      ansible.builtin.add_host:
+        name: "{{ lookup('ansible.builtin.env', 'BASTION_HOST') }}"
+        groups: [bastion]
+        ansible_ssh_host: "{{ lookup('ansible.builtin.env', 'BASTION_HOST') }}"
+        ansible_ssh_port: "{{ lookup('ansible.builtin.env', 'BASTION_PORT') }}"
+        ansible_ssh_user: "{{ lookup('ansible.builtin.env', 'BASTION_USER') }}"
+        ansible_ssh_pass: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_become_password: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_python_interpreter: /usr/libexec/platform-python
+        ansible_host_key_checking: false
+
+    - name: Add managed rhel hosts (reachable from control node)
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: [targets]
+        ansible_ssh_host: "{{ item }}"
+        ansible_ssh_user: rhel
+        ansible_ssh_pass: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_become_password: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_python_interpreter: /usr/libexec/platform-python
+        ansible_host_key_checking: false
+      loop:
+        - rhel01
+        - rhel02
+
+- name: "dev | run task-under-test on central"
+  hosts: bastion
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../vars/solve.yml"
+  tasks:
+    - name: "Include task under test ({{ tut }})"
+      ansible.builtin.include_tasks: "{{ tut }}"

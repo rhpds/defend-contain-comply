@@ -1,0 +1,55 @@
+---
+# DCC QA solve — Module 03 "Comply" (SOLVE_SCOPE §5 M3-A).
+# Runs on central. Idempotent/convergent: guards on the pushed image existing
+# in rhel01's local registry, which is the last node of the 7-node chain
+# (Audit Pre -> CIS Harden -> Audit Post -> Report -> Build -> Scan -> Push),
+# so its presence proves the whole pipeline completed.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M3-A — Run the full Compliance and Hardening workflow. Single launch
+# subsumes COMPLY exercises 2-7 (SOLVE_SCOPE.md §5 M3-A).
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M3-A | check whether the hardened image is already pushed"
+  ansible.builtin.uri:
+    url: "http://{{ comply_registry_url }}/v2/{{ comply_image_name }}/tags/list"
+    method: GET
+    status_code: [200, 404]
+  delegate_to: rhel01
+  register: m3a_tags0
+  failed_when: false
+  changed_when: false
+
+- name: "M3-A | decide whether the workflow needs to run"
+  ansible.builtin.set_fact:
+    m3a_done: >-
+      {{ (m3a_tags0.status | default(0)) == 200
+         and comply_image_tag in (m3a_tags0.json.tags | default([])) }}
+
+- name: "M3-A | run Compliance and Hardening"
+  ansible.builtin.include_tasks: _launch_workflow.yml
+  vars:
+    lw_wf: "{{ comply_workflow_name }}"
+    lw_auto_approve: false
+    lw_timeout: 1800
+  when: not m3a_done
+
+- name: "M3-A | verify the hardened image is present in the registry"
+  ansible.builtin.uri:
+    url: "http://{{ comply_registry_url }}/v2/{{ comply_image_name }}/tags/list"
+    method: GET
+    return_content: true
+    status_code: [200]
+  delegate_to: rhel01
+  register: m3a_tags
+  until: (m3a_tags.status | default(0)) == 200 and comply_image_tag in (m3a_tags.json.tags | default([]))
+  retries: 6
+  delay: 5
+  changed_when: false
+
+- name: "M3-A | assert the hardened image is in the registry"
+  ansible.builtin.assert:
+    that:
+      - comply_image_tag in (m3a_tags.json.tags | default([]))
+    success_msg: "{{ comply_image_name }}:{{ comply_image_tag }} present in registry (tags: {{ m3a_tags.json.tags }})"
+    fail_msg: "{{ comply_image_name }}:{{ comply_image_tag }} not found in registry (tags: {{ m3a_tags.json.tags | default([]) }})"

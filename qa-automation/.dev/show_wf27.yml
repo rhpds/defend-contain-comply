@@ -1,0 +1,31 @@
+---
+# DEV-ONLY scratch: print WFJT 27 chain as identifier -> [child identifiers].
+- name: Read nodes
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_job_templates/27/workflow_nodes/"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: sw
+
+- name: Build id->identifier
+  ansible.builtin.set_fact:
+    id2ident: >-
+      {{ dict(sw.json.results | map(attribute='id')
+              | zip(sw.json.results | map(attribute='identifier'))) }}
+
+- name: Show chain
+  ansible.builtin.debug:
+    msg: >-
+      {{ sw.json.results | map(attribute='identifier') | zip(
+           sw.json.results | map(attribute='success_nodes')
+           | map('map', 'extract', id2ident) | map('list')
+         ) | list }}
+
+- name: Show approval details
+  ansible.builtin.debug:
+    msg: >-
+      {{ sw.json.results | selectattr('identifier','equalto','dcc-m2c-approval')
+         | map(attribute='summary_fields') | list }}
