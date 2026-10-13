@@ -1,22 +1,10 @@
 ---
 # DCC QA solve — preflight environment gate (SOLVE_SCOPE.md §4).
-# Read-only checks run before any solve task. Grown one task at a time; each task is
-# tested against the live dev environment before the next is added.
-
-- name: "Preflight | AAP Controller API reachable"
-  ansible.builtin.uri:
-    url: "{{ controller_api }}/ping/"
-    method: GET
-    validate_certs: false
-  register: pf_ping
-
-- name: "Preflight | assert controller responded"
-  ansible.builtin.assert:
-    that:
-      - pf_ping.status == 200
-      - pf_ping.json.version is defined
-    success_msg: "AAP Controller {{ pf_ping.json.version }} reachable at {{ controller_api }}"
-    fail_msg: "AAP Controller not reachable / unexpected response at {{ controller_api }}"
+# Read-only go/no-go on the *content and credential* layer before a destructive
+# solve run — complements healthcheck.yml (which covers service/port reachability,
+# including an unauthenticated Controller /ping/). Each check here asserts a solve
+# precondition healthcheck does not: admin auth works, OPA policies are loaded, and
+# the EDA project finished importing.
 
 - name: "Preflight | admin credentials valid (list job templates)"
   ansible.builtin.uri:
