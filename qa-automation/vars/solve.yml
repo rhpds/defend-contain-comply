@@ -1,0 +1,88 @@
+---
+# DCC QA solve — shared constants.
+# Values verified live against sandbox-j9lwg-zt-ansiblebu on 2026-09-29
+# (see QA_SOLVE_IMPLEMENTATION_PLAN.md Appendix A). Solve tasks run ON central,
+# which reaches the control host by name and OPA/Splunk on localhost.
+#
+# Grown one task at a time — only add a var once a task that needs it is being written.
+
+# --- API endpoints (as seen from central) ---
+controller_api: "https://control/api/controller/v2"
+eda_api: "https://control/api/eda/v1"
+opa_url: "http://localhost:8181"
+
+# --- EDA project (Appendix A.5) ---
+eda_project_name: "Defend, Contain, Comply"
+
+# --- Gitea (Appendix A.6) — reachable from central by cluster DNS ---
+gitea_api: "http://gitea:3000/api/v1"
+gitea_repo: "gitea/defend-contain-comply"
+gitea_user: "{{ lookup('ansible.builtin.env', 'GITEA_USER') | default('gitea', true) }}"
+gitea_password: "{{ lookup('ansible.builtin.env', 'GITEA_PASSWORD') | default(lookup('ansible.builtin.env', 'BASTION_PASSWORD'), true) }}"
+# M1-B: copy the shipped solution rulebook to the EDA-discoverable path.
+rulebook_src_path: "lab/extensions/eda/splunk-cve-alert.yml"
+rulebook_dst_path: "extensions/eda/rulebooks/splunk-cve-alert.yml"
+
+# --- M1-C: EDA event-stream + rulebook activation (Appendix A.5) ---
+# Student builds the Splunk→EDA bridge: a Token Event Stream credential, the event
+# stream itself (whose receptor URL is fed back into the Splunk add-on), and the
+# rulebook activation that runs the shipped rulebook against the DCC project.
+eda_es_cred_name: "Splunk EDA Token"        # eda-credential, credential-type "Token Event Stream" (id 8)
+eda_es_name: "Splunk EDA"                    # event stream
+eda_activation_name: "DCC CVE Alert Responder"
+eda_de_name: "Default Decision Environment"  # decision environment (id 1)
+eda_rulebook_name: "splunk-cve-alert.yml"    # discovered by M1-B
+eda_controller_cred_name: "DCC Controller Token"  # pre-created by setup (id 4)
+# Token that authenticates Splunk→EDA event POSTs (Appendix A.5 / lab constant).
+eda_es_token: "ansibleiscool"
+eda_es_header: "Authorization"
+# Splunk add-on environment that forwards the "DCC CVE Alert" saved search to EDA.
+splunk_addon_env_name: "Splunk2EDA"
+splunk_addon_environment: "DCC"           # the add-on's "environment" field value
+splunk_addon_app: "ansible_addon_for_splunk"
+
+# --- Splunk management API (on central, same host the solve runs on) ---
+splunk_mgmt_url: "https://127.0.0.1:8089"
+splunk_admin_user: "{{ lookup('ansible.builtin.env', 'SPLUNK_ADMIN_USER') | default('admin', true) }}"
+splunk_admin_password: "{{ lookup('ansible.builtin.env', 'SPLUNK_ADMIN_PASSWORD') | default(lookup('ansible.builtin.env', 'BASTION_PASSWORD'), true) }}"
+
+# --- M1-E: deterministic trigger of the Splunk -> EDA -> AAP chain ---
+# HEC ingests the shipped synthetic detection payload so the real "DCC CVE Alert"
+# saved search (cron */1 * * * *) finds it and fires the already-wired webhook,
+# rather than posting a hand-built envelope straight at the EDA receptor (that
+# envelope shape is undocumented/private to the add-on — see M1-E task notes).
+splunk_hec_url: "https://127.0.0.1:8088"
+splunk_hec_token: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"     # confirmed live (SOLVE_SCOPE.md constant)
+m1e_payload_src_path: "lab/templates/splunk-alert-payload-rhel02.json"
+splunk_saved_search_name: "DCC CVE Alert"
+splunk_saved_search_owner: "admin"   # dispatch must use the owning user/app namespace,
+                                       # not /servicesNS/-/-/... (that 400s on dispatch)
+
+# --- M2-D: execution policy (separation of duties) wiring (Appendix A.4) ---
+opa_gateway_host: "192.168.1.11"       # central's IP, where OPA actually runs
+opa_enforcement_path: "aap/gateway/decision"
+
+# --- M2-E: patch verification (guard + end-state check) ---
+vulnerable_httpd_version: "2.4.57-5.el9"   # rhel01's starting httpd (target_cve CVE-2024-38476)
+
+# --- M3-A: Compliance and Hardening workflow (7-node: audit->harden->audit->
+# report->build->scan->push). End-state signal is the pushed image, since
+# that's the workflow's last node — confirmed via lab/playbooks/comply/
+# push-to-registry.yml (fetched from Gitea): registry runs ON rhel01 itself
+# (container "workshop-registry", port 5000), not on central.
+comply_workflow_name: "Compliance and Hardening"
+comply_image_name: "parasol-app"
+comply_image_tag: "latest"
+comply_registry_url: "localhost:5000"    # as seen from rhel01 (delegate_to)
+
+# --- AAP admin credentials (basic auth) ---
+# Sourced from env at QA runtime; falls back to the shared BASTION_PASSWORD, which is the
+# same lab constant in this catalog item. Never printed (no_log on auth tasks).
+aap_admin_user: "{{ lookup('ansible.builtin.env', 'AAP_ADMIN_USER') | default('admin', true) }}"
+aap_admin_password: "{{ lookup('ansible.builtin.env', 'AAP_ADMIN_PASSWORD') | default(lookup('ansible.builtin.env', 'BASTION_PASSWORD'), true) }}"
+
+# --- security_engineer (Appendix A.2: user id 3, Approve on WFJT 27) ---
+# Used for M2-E: launch + approve "Policy-Gated Patching" as this user. Password is
+# the same shared lab constant; overridable via env for other environments.
+sec_engineer_user: "{{ lookup('ansible.builtin.env', 'SEC_ENGINEER_USER') | default('security_engineer', true) }}"
+sec_engineer_password: "{{ lookup('ansible.builtin.env', 'SEC_ENGINEER_PASSWORD') | default(lookup('ansible.builtin.env', 'BASTION_PASSWORD'), true) }}"

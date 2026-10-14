@@ -1,0 +1,34 @@
+---
+# DEV-ONLY scratch: inspect a running workflow job's nodes to find the approval.
+- name: Read workflow job nodes
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_jobs/{{ wj }}/workflow_nodes/"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: wjn
+
+- name: Show per-node job type/status/id
+  ansible.builtin.debug:
+    msg: >-
+      {{ wjn.json.results | map('combine', {}) | map(attribute='summary_fields')
+         | map(attribute='job', default={}) | list }}
+
+- name: Show pending approvals endpoint
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_approvals/?status=pending"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: wa
+
+- name: Show pending approvals
+  ansible.builtin.debug:
+    msg: >-
+      {{ wa.json.results | map('combine', {})
+         | map(attribute='id') | zip(wa.json.results | map(attribute='name'))
+         | list }}

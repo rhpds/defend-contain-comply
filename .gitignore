@@ -1,3 +1,6 @@
 # Antora build output
 www/
 .cache/
+
+# Large binaries that shouldn't be committed
+*.flatpak

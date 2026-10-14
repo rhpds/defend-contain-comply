@@ -1,0 +1,27 @@
+---
+# DEV-ONLY scratch: delete all workflow nodes on WFJT 27 to get a clean slate.
+- name: List WFJT 27 nodes
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_job_templates/27/workflow_nodes/"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: rw
+
+- name: Show ids to delete
+  ansible.builtin.debug:
+    msg: "{{ rw.json.results | map(attribute='id') | list }}"
+
+- name: Delete each node
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_job_template_nodes/{{ item }}/"
+    method: DELETE
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [204]
+  loop: "{{ rw.json.results | map(attribute='id') | list }}"
+  no_log: true

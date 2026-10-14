@@ -81,92 +81,10 @@
         url: "http://127.0.0.1:8181/health"
 
   tasks:
-    - name: Initialise failure list
-      ansible.builtin.set_fact:
-        hc_failures: []
-
-    - name: Verify SSH connectivity
-      ansible.builtin.ping:
-
-    # ── Containers on central ────────────────────────────────────────────────
-    - name: Check container run state
-      ansible.builtin.command:
-        cmd: "podman inspect {{ item }} --format {% raw %}'{{.State.Running}}'{% endraw %}"
-      loop: "{{ hc_containers }}"
-      register: hc_container_state
-      changed_when: false
-      failed_when: false
-
-    - name: Record containers that are not running
-      ansible.builtin.set_fact:
-        hc_failures: "{{ hc_failures + ['Container not running: ' ~ item.item] }}"
-      loop: "{{ hc_container_state.results }}"
-      loop_control:
-        label: "{{ item.item }}"
-      when: (item.stdout | default('') | trim) != 'true'
-
-    # ── Errata repo systemd unit ─────────────────────────────────────────────
-    - name: Check errata repo service
-      ansible.builtin.systemd:
-        name: dcc-errata-repo
-      register: hc_errata
-      failed_when: false
-
-    - name: Record errata repo service if not active
-      ansible.builtin.set_fact:
-        hc_failures: "{{ hc_failures + ['Service not active: dcc-errata-repo (state: ' ~ _hc_state ~ ')'] }}"
-      vars:
-        _hc_state: "{{ hc_errata.status.ActiveState | default('not found') }}"
-      when: _hc_state != 'active'
-
-    # ── TCP reachability ─────────────────────────────────────────────────────
-    - name: Check TCP ports
-      ansible.builtin.wait_for:
-        host: "{{ item.host }}"
-        port: "{{ item.port }}"
-        timeout: "{{ hc_connect_timeout }}"
-        state: started
-      loop: "{{ hc_ports }}"
-      loop_control:
-        label: "{{ item.label }}"
-      register: hc_port_state
-      failed_when: false
-
-    - name: Record unreachable ports
-      ansible.builtin.set_fact:
-        hc_failures: "{{ hc_failures + ['Port unreachable: ' ~ item.item.label ~ ' (' ~ item.item.host ~ ':' ~ item.item.port ~ ')'] }}"
-      loop: "{{ hc_port_state.results }}"
-      loop_control:
-        label: "{{ item.item.label }}"
-      when: item.failed | default(false)
-
-    # ── HTTP health endpoints ────────────────────────────────────────────────
-    - name: Check HTTP health endpoints
-      ansible.builtin.uri:
-        url: "{{ item.url }}"
-        method: GET
-        validate_certs: "{{ hc_validate_certs }}"
-        ca_path: "{{ hc_ca_path | default(omit, true) }}"
-        timeout: "{{ hc_http_timeout }}"
-        status_code: 200
-      loop: "{{ hc_endpoints }}"
-      loop_control:
-        label: "{{ item.label }}"
-      register: hc_endpoint_state
-      changed_when: false
-      failed_when: false
-
-    - name: Record failing health endpoints
-      ansible.builtin.set_fact:
-        hc_failures: >-
-          {{ hc_failures + ['Health endpoint failed: ' ~ item.item.label
-             ~ ' (' ~ item.item.url ~ ' -> ' ~ _hc_status ~ ')'] }}
-      vars:
-        _hc_status: "{{ item.status | default('no response') }}"
-      loop: "{{ hc_endpoint_state.results }}"
-      loop_control:
-        label: "{{ item.item.label }}"
-      when: (item.status | default(0)) != 200
+    # Service-health checks live in a reusable task file so e2e.yml can share them.
+    # It populates hc_failures using the hc_* vars defined in this play.
+    - name: Verify all lab services are up
+      ansible.builtin.include_tasks: tasks/verify_services.yml
 
     # ── Verdict ──────────────────────────────────────────────────────────────
     - name: Report environment health

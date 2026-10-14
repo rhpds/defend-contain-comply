@@ -1,0 +1,730 @@
+---
+# DCC QA solve — Module 01 "Defend" (SOLVE_SCOPE §5 M1-A..E).
+# Runs on central; host-touching guards use delegate_to rhel01/rhel02 (§5.1).
+# Idempotent/convergent: each step guards on end-state. Built one task at a time.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M1-A — Vulnerability Containment on rhel01.
+# Guard: skip if rhel01 eth0 is already in the internal-only firewall zone.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M1-A | read rhel01 eth0 firewall zone"
+  ansible.builtin.command: "firewall-cmd --get-zone-of-interface=eth0"
+  delegate_to: rhel01
+  become: true
+  register: m1a_zone
+  changed_when: false
+  failed_when: false
+
+- name: "M1-A | decide whether containment is already applied"
+  ansible.builtin.set_fact:
+    m1a_done: "{{ (m1a_zone.stdout | default('') | trim) == 'internal-only' }}"
+
+- name: "M1-A | run Vulnerability Containment on rhel01"
+  ansible.builtin.include_tasks: _launch_workflow.yml
+  vars:
+    lw_wf: "Vulnerability Containment"
+    lw_limit: "rhel01"
+    lw_auto_approve: false
+  when: not m1a_done
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M1-B — Publish the EDA rulebook so the project can discover it.
+# The shipped solution lives in Gitea at rulebook_src_path but not at the
+# EDA-discoverable rulebook_dst_path. Copy it there, then re-sync the EDA project.
+# Guard: skip the commit if the destination already exists.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M1-B | check whether the discoverable rulebook already exists"
+  ansible.builtin.uri:
+    url: "{{ gitea_api }}/repos/{{ gitea_repo }}/contents/{{ rulebook_dst_path }}"
+    method: GET
+    url_username: "{{ gitea_user }}"
+    url_password: "{{ gitea_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: m1b_dst
+  no_log: true
+
+- name: "M1-B | decide whether the rulebook needs publishing"
+  ansible.builtin.set_fact:
+    m1b_needed: "{{ m1b_dst.status == 404 }}"
+
+- name: "M1-B | publish the rulebook to the discoverable path"
+  when: m1b_needed | bool
+  block:
+    - name: "M1-B | fetch the shipped solution rulebook (base64)"
+      ansible.builtin.uri:
+        url: "{{ gitea_api }}/repos/{{ gitea_repo }}/contents/{{ rulebook_src_path }}"
+        method: GET
+        url_username: "{{ gitea_user }}"
+        url_password: "{{ gitea_password }}"
+        force_basic_auth: true
+        status_code: [200]
+      register: m1b_src
+      no_log: true
+
+    - name: "M1-B | commit the rulebook to {{ rulebook_dst_path }}"
+      ansible.builtin.uri:
+        url: "{{ gitea_api }}/repos/{{ gitea_repo }}/contents/{{ rulebook_dst_path }}"
+        method: POST
+        url_username: "{{ gitea_user }}"
+        url_password: "{{ gitea_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          message: "QA: publish EDA rulebook for discovery (DCC solve M1-B)"
+          content: "{{ m1b_src.json.content }}"
+          branch: "main"
+        status_code: [201]
+      register: m1b_commit
+      no_log: true
+
+- name: "M1-B | resolve EDA project id"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/projects/?name={{ eda_project_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1b_eda_proj
+  no_log: true
+
+- name: "M1-B | record EDA project id"
+  ansible.builtin.set_fact:
+    m1b_proj_id: "{{ m1b_eda_proj.json.results[0].id }}"
+
+- name: "M1-B | check whether EDA already discovered the rulebook"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/rulebooks/?name=splunk-cve-alert.yml"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1b_rb0
+  no_log: true
+
+- name: "M1-B | decide whether a project sync is needed"
+  ansible.builtin.set_fact:
+    m1b_sync_needed: "{{ (m1b_rb0.json.count | int) == 0 }}"
+
+- name: "M1-B | sync the EDA project to discover the rulebook"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/projects/{{ m1b_proj_id }}/sync/"
+    method: POST
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 201, 202, 204]
+  when: m1b_sync_needed | bool
+  no_log: true
+
+- name: "M1-B | wait for EDA project import to finish"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/projects/{{ m1b_proj_id }}/"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1b_sync_poll
+  until: "m1b_sync_poll.json.import_state in ['completed', 'failed']"
+  retries: 30
+  delay: 5
+  when: m1b_sync_needed | bool
+  no_log: true
+
+- name: "M1-B | re-check rulebook discovery after sync"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/rulebooks/?name=splunk-cve-alert.yml"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1b_rb
+  until: "m1b_rb.json.count | int >= 1"
+  retries: "{{ 12 if (m1b_sync_needed | bool) else 1 }}"
+  delay: 5
+  no_log: true
+
+- name: "M1-B | assert the rulebook was discovered"
+  ansible.builtin.assert:
+    that:
+      - m1b_rb.json.count | int >= 1
+    success_msg: "EDA discovered rulebook splunk-cve-alert.yml ({{ m1b_rb.json.count }} match)"
+    fail_msg: "EDA did not discover splunk-cve-alert.yml after sync (count={{ m1b_rb.json.count }})"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M1-C — Build the Splunk→EDA bridge: Token Event Stream credential, event stream,
+# Splunk add-on environment, and the rulebook activation. Each resource is guarded
+# on existence (name lookup) so the module is convergent.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M1-C | resolve the Token Event Stream credential-type id"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/credential-types/?name={{ 'Token Event Stream' | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_ct
+  no_log: true
+
+- name: "M1-C | resolve the DCC Controller Token eda-credential id"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/eda-credentials/?name={{ eda_controller_cred_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_ctrl_cred
+  no_log: true
+
+- name: "M1-C | resolve the Default Decision Environment id"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/decision-environments/?name={{ eda_de_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_de
+  no_log: true
+
+- name: "M1-C | resolve the Default organization id"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/organizations/?name={{ 'Default' | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_org
+  no_log: true
+
+- name: "M1-C | check whether the event-stream credential already exists"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/eda-credentials/?name={{ eda_es_cred_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_es_cred0
+  no_log: true
+
+- name: "M1-C | record resolved ids and existence flags"
+  ansible.builtin.set_fact:
+    m1c_ct_id: "{{ m1c_ct.json.results[0].id }}"
+    m1c_ctrl_cred_id: "{{ m1c_ctrl_cred.json.results[0].id }}"
+    m1c_de_id: "{{ m1c_de.json.results[0].id }}"
+    m1c_org_id: "{{ m1c_org.json.results[0].id }}"
+    m1c_es_cred_exists: "{{ (m1c_es_cred0.json.count | int) > 0 }}"
+
+- name: "M1-C | show resolved M1-C ids"
+  ansible.builtin.debug:
+    msg: >-
+      credtype={{ m1c_ct_id }} controller_cred={{ m1c_ctrl_cred_id }}
+      de={{ m1c_de_id }} es_cred_exists={{ m1c_es_cred_exists }}
+
+- name: "M1-C | create the Token Event Stream credential"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/eda-credentials/"
+    method: POST
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      name: "{{ eda_es_cred_name }}"
+      credential_type_id: "{{ m1c_ct_id | int }}"
+      organization_id: "{{ m1c_org_id | int }}"
+      inputs:
+        auth_type: "token"
+        token: "{{ eda_es_token }}"
+        http_header_key: "{{ eda_es_header }}"
+    status_code: [200, 201]
+  register: m1c_es_cred_new
+  when: not (m1c_es_cred_exists | bool)
+  no_log: true
+
+- name: "M1-C | resolve the event-stream credential id"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/eda-credentials/?name={{ eda_es_cred_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_es_cred
+  no_log: true
+
+- name: "M1-C | record event-stream credential id"
+  ansible.builtin.set_fact:
+    m1c_es_cred_id: "{{ m1c_es_cred.json.results[0].id }}"
+
+- name: "M1-C | check whether the event stream already exists"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/event-streams/?name={{ eda_es_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_es0
+  no_log: true
+
+- name: "M1-C | create the event stream"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/event-streams/"
+    method: POST
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      name: "{{ eda_es_name }}"
+      eda_credential_id: "{{ m1c_es_cred_id | int }}"
+      organization_id: "{{ m1c_org_id | int }}"
+    status_code: [200, 201]
+  register: m1c_es_new
+  when: (m1c_es0.json.count | int) == 0
+  no_log: true
+
+- name: "M1-C | resolve the event stream (id + receptor URL)"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/event-streams/?name={{ eda_es_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_es
+  no_log: true
+
+- name: "M1-C | record event stream id and receptor URL"
+  ansible.builtin.set_fact:
+    m1c_es_id: "{{ m1c_es.json.results[0].id }}"
+    m1c_es_url: "{{ m1c_es.json.results[0].url }}"
+
+- name: "M1-C | show event stream endpoint"
+  ansible.builtin.debug:
+    msg: "event_stream id={{ m1c_es_id }} receptor={{ m1c_es_url }}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M1-C (cont.) — Rulebook activation "DCC CVE Alert Responder".
+#
+# source_mappings is a JSON-*encoded string* (not a nested object), and requires
+# all four keys: source_name, event_stream_id, event_stream_name, rulebook_hash.
+# source_name is NOT read off the rulebook's own `sources:` block — EDA assigns
+# positional names (e.g. "__SOURCE_1") to unnamed sources, discoverable only via
+# GET /rulebooks/{id}/sources/, which also reports the authoritative rulebook_hash
+# (sha256 of the ruleset YAML text) that must match exactly or EDA rejects with
+# "Rulebook has changed since the sources were mapped." Schema/behavior confirmed
+# live against sandbox-5b8jr-zt-ansiblebu on 2026-09-30.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M1-C | check whether the rulebook activation already exists"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/activations/?name={{ eda_activation_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_act0
+  no_log: true
+
+- name: "M1-C | resolve the rulebook id"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/rulebooks/?name={{ eda_rulebook_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_rb
+  no_log: true
+
+- name: "M1-C | record rulebook id"
+  ansible.builtin.set_fact:
+    m1c_rb_id: "{{ m1c_rb.json.results[0].id }}"
+    m1c_activation_exists: "{{ (m1c_act0.json.count | int) > 0 }}"
+
+- name: "M1-C | create the rulebook activation"
+  when: not (m1c_activation_exists | bool)
+  block:
+    - name: "M1-C | resolve the authoritative source name + rulebook hash"
+      ansible.builtin.uri:
+        url: "{{ eda_api }}/rulebooks/{{ m1c_rb_id }}/sources/"
+        method: GET
+        url_username: "{{ aap_admin_user }}"
+        url_password: "{{ aap_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      register: m1c_sources
+      no_log: true
+
+    - name: "M1-C | record source name + hash"
+      ansible.builtin.set_fact:
+        m1c_source_name: "{{ m1c_sources.json.results[0].name }}"
+        m1c_rulebook_hash: "{{ m1c_sources.json.results[0].rulebook_hash }}"
+
+    - name: "M1-C | create the activation"
+      ansible.builtin.uri:
+        url: "{{ eda_api }}/activations/"
+        method: POST
+        url_username: "{{ aap_admin_user }}"
+        url_password: "{{ aap_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          name: "{{ eda_activation_name }}"
+          decision_environment_id: "{{ m1c_de_id | int }}"
+          rulebook_id: "{{ m1c_rb_id | int }}"
+          organization_id: "{{ m1c_org_id | int }}"
+          eda_credentials: ["{{ m1c_ctrl_cred_id | int }}"]
+          extra_var: "EDA_WEBHOOK_TOKEN: {{ eda_es_token }}"
+          source_mappings: >-
+            {{ [{'source_name': m1c_source_name, 'event_stream_id': m1c_es_id | int,
+                 'event_stream_name': eda_es_name, 'rulebook_hash': m1c_rulebook_hash}] | to_json }}
+        status_code: [201]
+      register: m1c_act_new
+      no_log: true
+
+- name: "M1-C | resolve the activation id"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/activations/?name={{ eda_activation_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_act
+  no_log: true
+
+- name: "M1-C | record activation id"
+  ansible.builtin.set_fact:
+    m1c_act_id: "{{ m1c_act.json.results[0].id }}"
+
+- name: "M1-C | poll activation until running"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/activations/{{ m1c_act_id }}/"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_act_poll
+  until: "m1c_act_poll.json.status in ['running', 'error', 'failed']"
+  retries: 24
+  delay: 5
+  no_log: true
+
+- name: "M1-C | assert the activation is running"
+  ansible.builtin.assert:
+    that:
+      - m1c_act_poll.json.status == 'running'
+    success_msg: "Activation '{{ eda_activation_name }}' is running (id={{ m1c_act_id }})"
+    fail_msg: "Activation '{{ eda_activation_name }}' status={{ m1c_act_poll.json.status }} (expected running)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M1-C (cont.) — Splunk add-on webhook environment "Splunk2EDA".
+#
+# Runs against Splunk's own mgmt REST API on central (127.0.0.1:8089), not the
+# EDA/Controller API. Note: GET-by-name on this endpoint returns HTTP 500 (not
+# 404) for a missing object, so the guard uses the list endpoint (no name
+# segment) and filters client-side rather than trusting the status code.
+# webhook_endpoint is the event stream's own receptor URL (m1c_es_url, resolved
+# above) — never hardcoded, since it's a per-deploy UUID.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M1-C | list existing Splunk add-on environments"
+  ansible.builtin.uri:
+    url: "{{ splunk_mgmt_url }}/servicesNS/nobody/{{ splunk_addon_app }}/{{ splunk_addon_app }}_environment?output_mode=json"
+    method: GET
+    url_username: "{{ splunk_admin_user }}"
+    url_password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_splunk_env0
+  no_log: true
+
+- name: "M1-C | decide whether the Splunk add-on environment needs creating"
+  ansible.builtin.set_fact:
+    m1c_splunk_env_exists: "{{ splunk_addon_env_name in (m1c_splunk_env0.json.entry | map(attribute='name') | list) }}"
+
+- name: "M1-C | create the Splunk add-on environment {{ splunk_addon_env_name }}"
+  ansible.builtin.uri:
+    url: "{{ splunk_mgmt_url }}/servicesNS/nobody/{{ splunk_addon_app }}/{{ splunk_addon_app }}_environment"
+    method: POST
+    url_username: "{{ splunk_admin_user }}"
+    url_password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: form-urlencoded
+    body:
+      name: "{{ splunk_addon_env_name }}"
+      integration_type: "webhook"
+      environment: "{{ splunk_addon_environment }}"
+      webhook_endpoint: "{{ m1c_es_url }}"
+      # NOTE: auth_type=token (as documented in SOLVE_SCOPE.md §A.5) is a dead end —
+      # ansible_addon_for_splunk's integration_client.py only implements "basic" and
+      # "apikey"/"api_key"; "token" silently falls through to *no auth*, and EDA's
+      # event-stream receptor then rejects with 400 "Authorization header is missing".
+      # apikey sends "Authorization: Bearer <token>", which EDA accepts (it strips the
+      # scheme). Confirmed live against sandbox-5b8jr-zt-ansiblebu on 2026-09-30 by
+      # reading the add-on's own source and reproducing the exact request shape.
+      auth_type: "apikey"
+      token: "{{ eda_es_token }}"
+      ssl_check_hostname: "0"
+      output_mode: "json"
+    status_code: [201]
+  when: not (m1c_splunk_env_exists | bool)
+  no_log: true
+
+- name: "M1-C | re-list Splunk add-on environments to verify"
+  ansible.builtin.uri:
+    url: "{{ splunk_mgmt_url }}/servicesNS/nobody/{{ splunk_addon_app }}/{{ splunk_addon_app }}_environment?output_mode=json"
+    method: GET
+    url_username: "{{ splunk_admin_user }}"
+    url_password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m1c_splunk_env
+  no_log: true
+
+- name: "M1-C | assert the Splunk add-on environment is configured correctly"
+  ansible.builtin.assert:
+    that:
+      - splunk_addon_env_name in (m1c_splunk_env.json.entry | map(attribute='name') | list)
+      - >-
+        (m1c_splunk_env.json.entry | selectattr('name', 'equalto', splunk_addon_env_name)
+         | map(attribute='content') | first).webhook_endpoint == m1c_es_url
+    success_msg: "Splunk add-on environment '{{ splunk_addon_env_name }}' configured, webhook_endpoint matches event stream"
+    fail_msg: "Splunk add-on environment '{{ splunk_addon_env_name }}' missing or webhook_endpoint mismatch"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M1-D — Deploy the vulnerable app + portal + errata repo to rhel02.
+# Guard: skip the launch if the portal already answers *locally on rhel02*
+# (curl from rhel02 to its own loopback, delegate_to rhel02 — NOT from central
+# over the public interface). This matters once M1-E has run: containment
+# deliberately blocks the externally-reachable portal by design, so an
+# external check from central can't tell "not yet deployed" apart from
+# "deployed AND already contained" — checking from central caused M1-D to
+# wrongly redeploy an already-contained rhel02, which undid M1-E's result and
+# forced it to re-run on every replay. Confirmed live against
+# sandbox-5b8jr-zt-ansiblebu on 2026-09-30 (the M1-D/M1-E "flapping" bug).
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M1-D | check whether the app is already deployed (local check on rhel02)"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1/"
+    method: GET
+    status_code: [200]
+    timeout: 5
+  delegate_to: rhel02
+  register: m1d_portal0
+  failed_when: false
+  changed_when: false
+
+- name: "M1-D | decide whether the deploy is needed"
+  ansible.builtin.set_fact:
+    m1d_done: "{{ (m1d_portal0.status | default(0)) == 200 }}"
+
+- name: "M1-D | deploy application to rhel02"
+  ansible.builtin.include_tasks: _launch_job.yml
+  vars:
+    lj_template: "DEFEND - Deploy Application"
+    lj_limit: "rhel02"
+  when: not m1d_done
+
+# Only meaningful right after a fresh deploy, before containment exists — an
+# external check here would be a false negative on an already-contained host.
+- name: "M1-D | verify the rhel02 portal answers externally (fresh deploy only)"
+  ansible.builtin.uri:
+    url: "http://rhel02/"
+    method: GET
+    status_code: [200]
+    timeout: 10
+  register: m1d_portal
+  until: (m1d_portal.status | default(0)) == 200
+  retries: 6
+  delay: 5
+  changed_when: false
+  when: not m1d_done
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M1-E — Prove rhel02 gets contained via the automated Splunk -> EDA -> AAP
+# chain (not a direct workflow launch). Guard: skip entirely if rhel02 is
+# already contained.
+#
+# Deviation from SOLVE_SCOPE.md's original plan, confirmed live against
+# sandbox-5b8jr-zt-ansiblebu on 2026-09-30:
+#   - The shipped "synthetic payload" files (lab/templates/splunk-alert-payload
+#     -rhel02.json) do NOT match the rulebook's condition shape
+#     (event.payload.search_name / event.payload.results.host) and are NOT
+#     meant to be posted straight at the EDA event-stream receptor. They are
+#     detection records for Splunk HEC ingestion: once indexed (index=main,
+#     sourcetype=linux_secure), the real "DCC CVE Alert" saved search
+#     (stats count by host, cron */1 * * * *) finds them and fires the
+#     add-on's *real* webhook action — the same path a real Splunk detection
+#     would take, and the only path that produces the documented payload
+#     envelope (search_name/results.host).
+#   - Dispatching the saved search via the wildcarded /servicesNS/-/-/...
+#     namespace 400s ("Cannot edit/create a saved search for wildcarded
+#     users..."); it must be dispatched via the owning user+app namespace.
+#   - launch_type on the resulting workflow job is "manual" even when EDA's
+#     run_workflow_template action launched it — ansible-rulebook calls the
+#     same launch API a human would, so AAP can't distinguish the caller that
+#     way. The reliable proof is the EDA audit-rules -> actions -> events
+#     chain, not launch_type (contradicts SOLVE_SCOPE.md's original check).
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M1-E | read rhel02 eth0 firewall zone"
+  ansible.builtin.command: "firewall-cmd --get-zone-of-interface=eth0"
+  delegate_to: rhel02
+  become: true
+  register: m1e_zone
+  changed_when: false
+  failed_when: false
+
+- name: "M1-E | decide whether rhel02 is already contained"
+  ansible.builtin.set_fact:
+    m1e_done: "{{ (m1e_zone.stdout | default('') | trim) == 'internal-only' }}"
+
+- name: "M1-E | trigger and verify the automated containment chain"
+  when: not m1e_done
+  block:
+    - name: "M1-E | fetch the shipped synthetic detection payload"
+      ansible.builtin.uri:
+        url: "{{ gitea_api }}/repos/{{ gitea_repo }}/raw/{{ m1e_payload_src_path }}"
+        method: GET
+        url_username: "{{ gitea_user }}"
+        url_password: "{{ gitea_password }}"
+        force_basic_auth: true
+        return_content: true
+        status_code: [200]
+      register: m1e_payload
+      no_log: true
+
+    - name: "M1-E | ingest the payload via Splunk HEC (sourcetype=linux_secure, index=main)"
+      ansible.builtin.uri:
+        url: "{{ splunk_hec_url }}/services/collector/event"
+        method: POST
+        headers:
+          Authorization: "Splunk {{ splunk_hec_token }}"
+        body_format: json
+        body:
+          event: "{{ m1e_payload.content }}"
+          sourcetype: "linux_secure"
+          index: "main"
+          host: "rhel02"
+        validate_certs: false
+        status_code: [200]
+      register: m1e_hec
+      no_log: true
+
+    - name: "M1-E | wait for the event to be searchable"
+      ansible.builtin.uri:
+        url: "{{ splunk_mgmt_url }}/services/search/jobs/export"
+        method: POST
+        url_username: "{{ splunk_admin_user }}"
+        url_password: "{{ splunk_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          search: 'search index=main sourcetype=linux_secure "CVE-2024-38476" host=rhel02'
+          output_mode: "json"
+          earliest_time: "-5m"
+        status_code: [200]
+      register: m1e_indexed
+      until: "'\"host\":\"rhel02\"' in (m1e_indexed.content | default(''))"
+      retries: 12
+      delay: 5
+      failed_when: false
+      no_log: true
+
+    - name: "M1-E | force-dispatch the saved search (skip the cron wait, trigger the real webhook action)"
+      ansible.builtin.uri:
+        url: >-
+          {{ splunk_mgmt_url }}/servicesNS/{{ splunk_saved_search_owner }}/{{ splunk_addon_app }}/saved/searches/{{ splunk_saved_search_name | urlencode }}/dispatch
+        method: POST
+        url_username: "{{ splunk_admin_user }}"
+        url_password: "{{ splunk_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          trigger_actions: "1"
+        status_code: [201]
+      no_log: true
+
+    - name: "M1-E | poll rhel02 for automated containment (fallback: direct launch on timeout)"
+      block:
+        - name: "M1-E | poll rhel02 eth0 zone until contained"
+          ansible.builtin.command: "firewall-cmd --get-zone-of-interface=eth0"
+          delegate_to: rhel02
+          become: true
+          register: m1e_zone_poll
+          changed_when: false
+          until: "(m1e_zone_poll.stdout | default('') | trim) == 'internal-only'"
+          retries: 18
+          delay: 5
+      rescue:
+        - name: "M1-E | FALLBACK — automated chain did not complete in time, launching containment directly"
+          ansible.builtin.debug:
+            msg: >-
+              DEVIATION: the Splunk->EDA->AAP chain did not contain rhel02 within the
+              bounded wait. Falling back to a direct 'Vulnerability Containment' launch
+              so the destructive solve still reaches the completed end-state. This does
+              NOT count as the automated chain passing.
+
+        - name: "M1-E | fallback direct launch of Vulnerability Containment on rhel02"
+          ansible.builtin.include_tasks: _launch_workflow.yml
+          vars:
+            lw_wf: "Vulnerability Containment"
+            lw_limit: "rhel02"
+            lw_auto_approve: false
+
+    - name: "M1-E | confirm the causal audit trail (best-effort, informational)"
+      ansible.builtin.uri:
+        url: "{{ eda_api }}/audit-rules/?order_by=-fired_at"
+        method: GET
+        url_username: "{{ aap_admin_user }}"
+        url_password: "{{ aap_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      register: m1e_audit
+      failed_when: false
+      no_log: true
+
+    - name: "M1-E | show the most recent matched rule (if any)"
+      ansible.builtin.debug:
+        msg: >-
+          {{ m1e_audit.json.results[0] if (m1e_audit.json is defined and (m1e_audit.json.count | default(0) | int) > 0)
+             else 'No EDA audit-rule record found (fallback path may have been used).' }}
+
+- name: "M1-E | final assert — rhel02 is contained"
+  ansible.builtin.command: "firewall-cmd --get-zone-of-interface=eth0"
+  delegate_to: rhel02
+  become: true
+  register: m1e_final
+  changed_when: false
+
+- name: "M1-E | assert containment reached"
+  ansible.builtin.assert:
+    that:
+      - (m1e_final.stdout | trim) == 'internal-only'
+    success_msg: "rhel02 is contained (eth0=internal-only)"
+    fail_msg: "rhel02 eth0 zone is '{{ m1e_final.stdout | trim }}', expected internal-only"

@@ -1,0 +1,308 @@
+---
+# DCC QA solve — Module 02 "Contain" (SOLVE_SCOPE §5 M2-A, C, D, E).
+# Runs on central. Idempotent/convergent: each block guards on end-state so a
+# re-run of a solved lab is a no-op. Built and tested one task at a time.
+#
+# M2-B is a documented no-op (the Pre-Patch Check template already runs the
+# solution file; the "uncomment" step targets a decoy). No task here.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M2-A — Backup markers present on rhel01 and rhel02.
+# ansible.builtin.file with state=touch is naturally idempotent (it won't
+# clobber an existing file's mtime-triggering "changed" status differently —
+# it always reports changed=true on touch, which is fine; the guard here is
+# just "file exists", not "was just created").
+# NOTE: markers were already present on both hosts when first checked live
+# against sandbox-5b8jr-zt-ansiblebu (contradicts SOLVE_SCOPE.md §4.3's
+# "absent" starting-condition assumption) — the task still works correctly
+# either way since it's an existence check, not a strict pre/absent gate.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M2-A | ensure the backup marker exists on rhel01 and rhel02"
+  ansible.builtin.file:
+    path: /var/log/last-backup-timestamp
+    state: touch
+    mode: "0644"
+  delegate_to: "{{ item }}"
+  become: true
+  loop:
+    - rhel01
+    - rhel02
+  loop_control:
+    label: "{{ item }}"
+
+- name: "M2-A | verify the backup marker exists on rhel01 and rhel02"
+  ansible.builtin.stat:
+    path: /var/log/last-backup-timestamp
+  delegate_to: "{{ item }}"
+  become: true
+  register: m2a_stat
+  loop:
+    - rhel01
+    - rhel02
+  loop_control:
+    label: "{{ item }}"
+
+- name: "M2-A | assert the marker exists on both hosts"
+  ansible.builtin.assert:
+    that:
+      - m2a_stat.results | map(attribute='stat.exists') | list == [true, true]
+    success_msg: "Backup marker present on rhel01 and rhel02"
+    fail_msg: "Backup marker missing on at least one host: {{ m2a_stat.results | map(attribute='item') | zip(m2a_stat.results | map(attribute='stat.exists')) | list }}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M2-C — Build the 5 "Policy-Gated Patching" (WFJT 27) nodes.
+# Linear On-Success chain mirroring WFJT 26:
+#   Pre-Patch Check (15) -> approval "Approve Patch Application" (900s)
+#     -> Patch System (16) -> Post-Patch Verify (17) -> Report Compliance (18)
+# Convergent by stable per-node identifier: the Controller enforces unique
+# identifiers per workflow, so each node/link is created only when absent.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M2-C | read current WFJT 27 workflow nodes"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_job_templates/27/workflow_nodes/"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m2c_nodes
+  no_log: true
+
+- name: "M2-C | map existing node identifiers to ids"
+  ansible.builtin.set_fact:
+    m2c_have: >-
+      {{ dict(m2c_nodes.json.results
+              | selectattr('identifier', 'defined')
+              | map(attribute='identifier')
+              | zip(m2c_nodes.json.results | selectattr('identifier', 'defined') | map(attribute='id'))) }}
+
+- name: "M2-C | create the four job-template nodes (missing only)"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_job_templates/27/workflow_nodes/"
+    method: POST
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      unified_job_template: "{{ item.jt }}"
+      identifier: "{{ item.identifier }}"
+    status_code: [201]
+  loop: "{{ m2c_jt_nodes }}"
+  loop_control:
+    label: "{{ item.identifier }}"
+  when: item.identifier not in m2c_have
+  no_log: true
+  vars:
+    m2c_jt_nodes:
+      - {identifier: "dcc-m2c-prepatch", jt: 15}
+      - {identifier: "dcc-m2c-patch", jt: 16}
+      - {identifier: "dcc-m2c-verify", jt: 17}
+      - {identifier: "dcc-m2c-report", jt: 18}
+
+- name: "M2-C | create the approval step (bare node + approval template)"
+  when: "'dcc-m2c-approval' not in m2c_have"
+  block:
+    - name: "M2-C | create bare node for the approval step"
+      ansible.builtin.uri:
+        url: "{{ controller_api }}/workflow_job_templates/27/workflow_nodes/"
+        method: POST
+        url_username: "{{ aap_admin_user }}"
+        url_password: "{{ aap_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          identifier: "dcc-m2c-approval"
+        status_code: [201]
+      register: m2c_na
+      no_log: true
+
+    - name: "M2-C | convert node to an approval template (900s)"
+      ansible.builtin.uri:
+        url: "{{ controller_api }}/workflow_job_template_nodes/{{ m2c_na.json.id }}/create_approval_template/"
+        method: POST
+        url_username: "{{ aap_admin_user }}"
+        url_password: "{{ aap_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          name: "Approve Patch Application"
+          description: "Security engineer approval gate before patching"
+          timeout: 900
+        status_code: [200, 201]
+      no_log: true
+
+- name: "M2-C | read nodes back for linking"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_job_templates/27/workflow_nodes/"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m2c_state
+  no_log: true
+
+- name: "M2-C | map identifier -> id and identifier -> success_nodes"
+  ansible.builtin.set_fact:
+    m2c_ids: >-
+      {{ dict(m2c_state.json.results | map(attribute='identifier')
+              | zip(m2c_state.json.results | map(attribute='id'))) }}
+    m2c_succ: >-
+      {{ dict(m2c_state.json.results | map(attribute='identifier')
+              | zip(m2c_state.json.results | map(attribute='success_nodes'))) }}
+
+- name: "M2-C | link the on-success chain (missing edges only)"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_job_template_nodes/{{ m2c_ids[item.0] }}/success_nodes/"
+    method: POST
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      id: "{{ m2c_ids[item.1] }}"
+    status_code: [201, 204]
+  loop: "{{ m2c_edges }}"
+  loop_control:
+    label: "{{ item.0 }} -> {{ item.1 }}"
+  when: m2c_ids[item.1] not in m2c_succ[item.0]
+  no_log: true
+  vars:
+    m2c_edges:
+      - ["dcc-m2c-prepatch", "dcc-m2c-approval"]
+      - ["dcc-m2c-approval", "dcc-m2c-patch"]
+      - ["dcc-m2c-patch", "dcc-m2c-verify"]
+      - ["dcc-m2c-verify", "dcc-m2c-report"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M2-D — Execution policy (separation of duties): wire the Controller to OPA's
+# gateway/execution-policy endpoint. Verified live (SOLVE_SCOPE.md §A.4):
+# OPA_PORT (8181) and OPA_SSL (false) are already correct at deploy; only
+# OPA_HOST and the org's opa_query_path are genuinely unset. Guard on current
+# value so a re-run is a no-op PATCH-free read.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M2-D | read current Controller settings"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/settings/all/"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m2d_settings
+  no_log: true
+
+- name: "M2-D | set OPA_HOST if not already correct"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/settings/all/"
+    method: PATCH
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      OPA_HOST: "{{ opa_gateway_host }}"
+    status_code: [200]
+  when: m2d_settings.json.OPA_HOST != opa_gateway_host
+  no_log: true
+
+- name: "M2-D | read current org enforcement path"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/organizations/1/"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m2d_org
+  no_log: true
+
+- name: "M2-D | set org opa_query_path if not already correct"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/organizations/1/"
+    method: PATCH
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      opa_query_path: "{{ opa_enforcement_path }}"
+    status_code: [200]
+  when: m2d_org.json.opa_query_path != opa_enforcement_path
+  no_log: true
+
+- name: "M2-D | re-read settings + org to verify"
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: m2d_verify
+  loop:
+    - "{{ controller_api }}/settings/all/"
+    - "{{ controller_api }}/organizations/1/"
+  no_log: true
+
+- name: "M2-D | assert execution policy is wired"
+  ansible.builtin.assert:
+    that:
+      - m2d_verify.results[0].json.OPA_HOST == opa_gateway_host
+      - m2d_verify.results[1].json.opa_query_path == opa_enforcement_path
+    success_msg: "Execution policy wired: OPA_HOST={{ opa_gateway_host }}, opa_query_path={{ opa_enforcement_path }}"
+    fail_msg: "Execution policy not wired correctly"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# M2-E — Run Policy-Gated Patching end-to-end as security_engineer, with
+# auto-approval at the gate. Depends on M2-A (backup markers) and M1-D (rhel02
+# service active) — Pre-Patch Check runs across the whole inventory since WFJT
+# 27 has ask_limit_on_launch=false (confirmed live), so both hosts must be
+# gate-ready. Guard: skip if rhel01's httpd is already past the vulnerable
+# version.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: "M2-E | check rhel01 httpd version"
+  ansible.builtin.command: "rpm -q httpd"
+  delegate_to: rhel01
+  become: true
+  register: m2e_rpm
+  changed_when: false
+
+- name: "M2-E | decide whether the patch is needed"
+  ansible.builtin.set_fact:
+    m2e_done: "{{ vulnerable_httpd_version not in m2e_rpm.stdout }}"
+
+- name: "M2-E | run Policy-Gated Patching as security_engineer (auto-approve)"
+  ansible.builtin.include_tasks: _launch_workflow.yml
+  vars:
+    lw_wf: "Policy-Gated Patching"
+    lw_user: "{{ sec_engineer_user }}"
+    lw_password: "{{ sec_engineer_password }}"
+    lw_auto_approve: true
+    lw_timeout: 900
+  when: not m2e_done
+
+- name: "M2-E | re-check rhel01 httpd version"
+  ansible.builtin.command: "rpm -q httpd"
+  delegate_to: rhel01
+  become: true
+  register: m2e_rpm_final
+  changed_when: false
+
+- name: "M2-E | assert rhel01 is patched"
+  ansible.builtin.assert:
+    that:
+      - vulnerable_httpd_version not in m2e_rpm_final.stdout
+    success_msg: "rhel01 httpd patched: {{ m2e_rpm_final.stdout }}"
+    fail_msg: "rhel01 still on vulnerable httpd: {{ m2e_rpm_final.stdout }}"
