@@ -1,0 +1,17 @@
+---
+# e2e.yml helper: solve then validate a single module. Looped once per
+# ui-config.yml module (loop_var: module_name). Split out of e2e.yml because
+# `block` does not support `loop` in Ansible — only include_tasks does.
+
+- name: "{{ module_name }} | solve"
+  ansible.builtin.include_tasks: "{{ solve_task_map[module_name] }}"
+  when: module_name in solve_task_map
+
+- name: "{{ module_name }} | validate (shipped validation-central.sh, unchanged)"
+  ansible.builtin.include_tasks: tasks/run_script.yml
+  vars:
+    stage_name: validation
+
+- name: "{{ module_name }} | record PASS"
+  ansible.builtin.set_fact:
+    e2e_summary: "{{ e2e_summary + [module_name ~ ': PASS'] }}"

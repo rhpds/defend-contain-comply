@@ -1,0 +1,79 @@
+---
+# DCC QA solve — reusable "launch a job template and wait for success" block.
+# Caller sets:
+#   lj_template     : job template name (required)
+#   lj_extra_vars   : dict of extra_vars to pass (optional, default {})
+#   lj_limit        : host limit override (optional)
+#   lj_timeout      : max seconds to wait for completion (optional, default 600)
+# Returns:
+#   lj_job          : final job object (status == "successful" on success)
+# Grown/tested one task at a time against the live dev environment.
+
+- name: "launch_job | resolve template '{{ lj_template }}'"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/job_templates/?name={{ lj_template | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: lj_lookup
+  no_log: true
+
+- name: "launch_job | assert template resolved uniquely"
+  ansible.builtin.assert:
+    that:
+      - lj_lookup.json.count | int == 1
+    fail_msg: "Job template '{{ lj_template }}' not found (count={{ lj_lookup.json.count }})"
+
+- name: "launch_job | record template id"
+  ansible.builtin.set_fact:
+    lj_tid: "{{ lj_lookup.json.results[0].id }}"
+
+- name: "launch_job | launch '{{ lj_template }}'"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/job_templates/{{ lj_tid }}/launch/"
+    method: POST
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body: >-
+      {{
+        {}
+        | combine({'extra_vars': lj_extra_vars} if (lj_extra_vars | default({})) else {})
+        | combine({'limit': lj_limit} if (lj_limit | default('')) else {})
+      }}
+    status_code: [201, 202]
+  register: lj_launched
+  no_log: true
+
+- name: "launch_job | record launched job id"
+  ansible.builtin.set_fact:
+    lj_job_id: "{{ lj_launched.json.id }}"
+
+- name: "launch_job | poll job {{ lj_job_id }} to completion"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/jobs/{{ lj_job_id }}/"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: lj_poll
+  until: "lj_poll.json.status in ['successful', 'failed', 'error', 'canceled']"
+  retries: "{{ ((lj_timeout | default(600) | int) / 5) | int }}"
+  delay: 5
+  no_log: true
+
+- name: "launch_job | expose final job object"
+  ansible.builtin.set_fact:
+    lj_job: "{{ lj_poll.json }}"
+
+- name: "launch_job | assert job '{{ lj_template }}' succeeded"
+  ansible.builtin.assert:
+    that:
+      - lj_job.status == 'successful'
+    success_msg: "Job {{ lj_job.id }} ('{{ lj_template }}') completed successfully"
+    fail_msg: "Job {{ lj_job.id }} ('{{ lj_template }}') ended in status '{{ lj_job.status }}'"

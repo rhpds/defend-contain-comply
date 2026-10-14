@@ -1,0 +1,143 @@
+---
+# DCC QA solve — reusable "launch a workflow, optionally auto-approve, wait" block.
+# Caller sets:
+#   lw_wf           : workflow job template name (required)
+#   lw_limit        : host limit override (optional)
+#   lw_extra_vars   : dict of extra_vars (optional, default {})
+#   lw_user         : basic-auth user to launch/approve as (optional, default admin)
+#   lw_password     : password for lw_user (optional, default admin password)
+#   lw_auto_approve : approve the first pending approval node (optional, default false)
+#   lw_timeout      : max seconds to wait for completion (optional, default 1200)
+# Returns:
+#   lw_job          : final workflow job object (status == "successful" on success)
+# Grown/tested one task at a time against the live dev environment.
+
+- name: "launch_workflow | resolve workflow '{{ lw_wf }}'"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_job_templates/?name={{ lw_wf | urlencode }}"
+    method: GET
+    url_username: "{{ lw_user | default(aap_admin_user) }}"
+    url_password: "{{ lw_password | default(aap_admin_password) }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: lw_lookup
+  no_log: true
+
+- name: "launch_workflow | assert workflow resolved uniquely"
+  ansible.builtin.assert:
+    that:
+      - lw_lookup.json.count | int == 1
+    fail_msg: "Workflow '{{ lw_wf }}' not found (count={{ lw_lookup.json.count }})"
+
+- name: "launch_workflow | record workflow id and prompt capability"
+  ansible.builtin.set_fact:
+    lw_wfid: "{{ lw_lookup.json.results[0].id }}"
+    lw_ask_limit: "{{ lw_lookup.json.results[0].ask_limit_on_launch | default(false) }}"
+    lw_ask_vars: "{{ lw_lookup.json.results[0].ask_variables_on_launch | default(false) }}"
+
+- name: "launch_workflow | warn if a prompt field will be ignored"
+  ansible.builtin.debug:
+    msg: >-
+      Workflow '{{ lw_wf }}' is not configured to prompt on launch for
+      {{ (['limit'] if ((lw_limit | default('')) and not (lw_ask_limit | bool)) else [])
+         + (['extra_vars'] if ((lw_extra_vars | default({})) and not (lw_ask_vars | bool)) else []) }}
+      — these will be ignored (the workflow's own inventory/limit applies).
+  when: >-
+    (((lw_limit | default('')) | length > 0) and not (lw_ask_limit | bool))
+    or (((lw_extra_vars | default({})) | length > 0) and not (lw_ask_vars | bool))
+
+- name: "launch_workflow | launch '{{ lw_wf }}'"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_job_templates/{{ lw_wfid }}/launch/"
+    method: POST
+    url_username: "{{ lw_user | default(aap_admin_user) }}"
+    url_password: "{{ lw_password | default(aap_admin_password) }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body: >-
+      {{
+        {}
+        | combine({'extra_vars': lw_extra_vars} if ((lw_extra_vars | default({})) and (lw_ask_vars | bool)) else {})
+        | combine({'limit': lw_limit} if ((lw_limit | default('')) and (lw_ask_limit | bool)) else {})
+      }}
+    status_code: [201, 202]
+  register: lw_launched
+  no_log: true
+
+- name: "launch_workflow | record workflow job id"
+  ansible.builtin.set_fact:
+    lw_job_id: "{{ lw_launched.json.id }}"
+
+# Auto-approve: poll the workflow's nodes for one whose job is a pending
+# workflow_approval, then approve it as lw_user. Verified live against
+# sandbox-5b8jr-zt-ansiblebu (M2-E, WFJT 27): the approval node's own job
+# entry has type "workflow_approval" with a distinct id from the workflow job
+# itself — approve via /workflow_approvals/{that id}/approve/, not the
+# workflow job id. Bounded wait since Pre-Patch Check must run first.
+- name: "launch_workflow | wait for a pending approval node"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_jobs/{{ lw_job_id }}/workflow_nodes/"
+    method: GET
+    url_username: "{{ lw_user | default(aap_admin_user) }}"
+    url_password: "{{ lw_password | default(aap_admin_password) }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: lw_nodes
+  until: >-
+    lw_nodes.json.results
+    | selectattr('summary_fields.job.type', 'defined')
+    | selectattr('summary_fields.job.type', 'equalto', 'workflow_approval')
+    | selectattr('summary_fields.job.status', 'equalto', 'pending')
+    | list | length > 0
+  retries: "{{ ((lw_timeout | default(1200) | int) / 5) | int }}"
+  delay: 5
+  when: lw_auto_approve | default(false) | bool
+  no_log: true
+
+- name: "launch_workflow | record the pending approval id"
+  ansible.builtin.set_fact:
+    lw_approval_id: >-
+      {{ (lw_nodes.json.results
+          | selectattr('summary_fields.job.type', 'defined')
+          | selectattr('summary_fields.job.type', 'equalto', 'workflow_approval')
+          | selectattr('summary_fields.job.status', 'equalto', 'pending')
+          | map(attribute='summary_fields.job.id') | list)[0] }}
+  when: lw_auto_approve | default(false) | bool
+
+- name: "launch_workflow | approve the pending node"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_approvals/{{ lw_approval_id }}/approve/"
+    method: POST
+    url_username: "{{ lw_user | default(aap_admin_user) }}"
+    url_password: "{{ lw_password | default(aap_admin_password) }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [204]
+  when: lw_auto_approve | default(false) | bool
+  no_log: true
+
+- name: "launch_workflow | poll workflow job {{ lw_job_id }} to completion"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/workflow_jobs/{{ lw_job_id }}/"
+    method: GET
+    url_username: "{{ lw_user | default(aap_admin_user) }}"
+    url_password: "{{ lw_password | default(aap_admin_password) }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: lw_poll
+  until: "lw_poll.json.status in ['successful', 'failed', 'error', 'canceled']"
+  retries: "{{ ((lw_timeout | default(1200) | int) / 5) | int }}"
+  delay: 5
+  no_log: true
+
+- name: "launch_workflow | expose final workflow job object"
+  ansible.builtin.set_fact:
+    lw_job: "{{ lw_poll.json }}"
+
+- name: "launch_workflow | assert workflow '{{ lw_wf }}' succeeded"
+  ansible.builtin.assert:
+    that:
+      - lw_job.status == 'successful'
+    success_msg: "Workflow job {{ lw_job.id }} ('{{ lw_wf }}') completed successfully"
+    fail_msg: "Workflow job {{ lw_job.id }} ('{{ lw_wf }}') ended in status '{{ lw_job.status }}'"

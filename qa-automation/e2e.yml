@@ -1,40 +1,81 @@
 ---
-# E2E — End-to-end test (migrated ZT Guided content)
-# Solves and validates every module in ui-config.yml order, reusing the
-# legacy runtime-automation shell scripts (solve-<host>.sh / validation-<host>.sh)
-# that a migrated repo already ships. Fails on the first broken module.
+# E2E — Destructive, full-lab solve + validate (SOLVE_SCOPE.md / QA_SOLVE_
+# IMPLEMENTATION_PLAN.md §5). Drives the AAP/EDA/OPA/Gitea/Splunk APIs to
+# reach the lab's completed end-state module by module, then validates each
+# module via the unchanged, shipped `runtime-automation/<module>/
+# validation-central.sh` scripts. Module order comes from ui-config.yml, but
+# only matters for modules with solve logic: 1 -> 2 -> 3 has a real
+# dependency (M2-E's Pre-Patch Check runs across the whole inventory, so it
+# needs M2-A's backup markers on both hosts AND M1-D's rhel02 service to be
+# up — see qa-automation/.dev/RESUME.md §5.1).
+#
+# DESTRUCTIVE: solving consumes the lab (contains hosts, patches httpd,
+# hardens rhel01, pushes a container image). Only for capacity planning /
+# testing against a throwaway deploy — never against a lab handed to a
+# learner. Fails fast on the first broken module (deliberately — modules 2
+# and 3 assume prior modules' state).
 
 - name: Build inventory
   hosts: localhost
   gather_facts: false
   tasks:
-    - name: Add bastion host
+    - name: Add bastion host (central)
       ansible.builtin.add_host:
         name: "{{ lookup('ansible.builtin.env', 'BASTION_HOST') }}"
+        groups: [bastion]
         ansible_ssh_host: "{{ lookup('ansible.builtin.env', 'BASTION_HOST') }}"
         ansible_ssh_port: "{{ lookup('ansible.builtin.env', 'BASTION_PORT') }}"
         ansible_ssh_user: "{{ lookup('ansible.builtin.env', 'BASTION_USER') }}"
         ansible_ssh_pass: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_become_password: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
 
-- name: E2E - solve and validate all modules
-  hosts: all:!localhost
+    # rhel01/rhel02 are added so solve tasks can delegate_to them directly
+    # (M1-A/M1-E firewall checks, M2-A backup markers, M2-E/M3-A version and
+    # registry checks) — reachable from central by name per setup-automation.
+    - name: Add managed rhel hosts
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: [targets]
+        ansible_ssh_host: "{{ item }}"
+        ansible_ssh_user: rhel
+        ansible_ssh_pass: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+        ansible_become_password: "{{ lookup('ansible.builtin.env', 'BASTION_PASSWORD') }}"
+      loop:
+        - rhel01
+        - rhel02
+
+- name: E2E - solve then validate each module in order
+  hosts: bastion
   gather_facts: false
   become: true
+  vars_files:
+    - vars/solve.yml
   vars:
     runtime_path: "{{ playbook_dir }}/../runtime-automation"
     _ui_config: "{{ lookup('file', playbook_dir ~ '/../ui-config.yml') | from_yaml }}"
     modules_in_order: "{{ _ui_config.antora.modules | map(attribute='name') | list }}"
+    # Maps a ui-config module name to its solve task file. Modules with no
+    # entry here (index, overview, conclusion) are solve no-ops — only
+    # validation (if a script exists) runs for them, same as before.
+    solve_task_map:
+      module-01-defend: tasks/solve_module_01_defend.yml
+      module-02-contain: tasks/solve_module_02_contain.yml
+      module-03-comply: tasks/solve_module_03_comply.yml
   tasks:
-    - name: "Run solve then validation for each module"
-      ansible.builtin.include_tasks: tasks/run_script.yml
-      loop: >-
-        {{
-          modules_in_order
-          | product(['solve', 'validation'])
-          | list
-        }}
+    - name: "Preflight | pre-solve environment gate"
+      ansible.builtin.include_tasks: tasks/preflight.yml
+
+    - name: "Initialise the per-module summary"
+      ansible.builtin.set_fact:
+        e2e_summary: []
+
+    - name: "Solve then validate each module (in ui-config.yml order)"
+      ansible.builtin.include_tasks: tasks/solve_and_validate_module.yml
+      loop: "{{ modules_in_order }}"
       loop_control:
-        loop_var: _module_stage
-      vars:
-        module_name: "{{ _module_stage[0] }}"
-        stage_name: "{{ _module_stage[1] }}"
+        loop_var: module_name
+        label: "{{ module_name }}"
+
+    - name: "E2E summary"
+      ansible.builtin.debug:
+        msg: "{{ e2e_summary }}"

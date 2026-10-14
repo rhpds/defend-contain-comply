@@ -1,0 +1,66 @@
+---
+# DCC QA solve — preflight environment gate (SOLVE_SCOPE.md §4).
+# Read-only go/no-go on the *content and credential* layer before a destructive
+# solve run — complements healthcheck.yml (which covers service/port reachability,
+# including an unauthenticated Controller /ping/). Each check here asserts a solve
+# precondition healthcheck does not: admin auth works, OPA policies are loaded, and
+# the EDA project finished importing.
+
+- name: "Preflight | admin credentials valid (list job templates)"
+  ansible.builtin.uri:
+    url: "{{ controller_api }}/job_templates/?page_size=1"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: pf_jt
+  no_log: true
+
+- name: "Preflight | assert admin credentials valid"
+  ansible.builtin.assert:
+    that:
+      - pf_jt.status == 200
+      - pf_jt.json.count | int > 0
+    success_msg: "Admin credentials valid ({{ pf_jt.json.count }} job templates visible)"
+    fail_msg: "Admin credentials rejected or no job templates visible (status {{ pf_jt.status | default('?') }})"
+
+- name: "Preflight | OPA reachable and policies loaded"
+  ansible.builtin.uri:
+    url: "{{ opa_url }}/v1/policies"
+    method: GET
+  register: pf_opa
+
+- name: "Preflight | assert OPA has the 3 DCC policies"
+  ansible.builtin.assert:
+    that:
+      - pf_opa.status == 200
+      - "'policies/dcc-compliance.rego' in _loaded"
+      - "'policies/dcc-patch-policy.rego' in _loaded"
+      - "'policies/dcc-execution-policy.rego' in _loaded"
+    success_msg: "OPA loaded all 3 DCC policies"
+    fail_msg: "OPA missing a DCC policy; loaded: {{ _loaded }}"
+  vars:
+    _loaded: "{{ pf_opa.json.result | map(attribute='id') | list }}"
+
+- name: "Preflight | EDA API reachable and project synced"
+  ansible.builtin.uri:
+    url: "{{ eda_api }}/projects/?name={{ eda_project_name | urlencode }}"
+    method: GET
+    url_username: "{{ aap_admin_user }}"
+    url_password: "{{ aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: pf_eda
+  no_log: true
+
+- name: "Preflight | assert EDA project imported"
+  ansible.builtin.assert:
+    that:
+      - pf_eda.status == 200
+      - _proj | length == 1
+      - _proj[0].import_state == 'completed'
+    success_msg: "EDA project '{{ eda_project_name }}' present and import_state=completed"
+    fail_msg: "EDA project '{{ eda_project_name }}' missing or not synced (import_state={{ (_proj[0].import_state | default('?')) if _proj else 'absent' }})"
+  vars:
+    _proj: "{{ pf_eda.json.results | default([]) }}"
